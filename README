@@ -1,0 +1,336 @@
+# go-message-service
+
+Го сервис сообщений является учебным/портфолио (не продакшен) проектом фокусированном на управлении чатами и сообщениями между пользователями.
+
+Главная задача проекта помимо управления чатами и сообщениями, это сделать такой сервис, который можно будет легко интегрировать в любую систему. 
+
+---
+
+## What problem does it solve?
+
+Сервис предоставляет возможность хранить историю сообщений, создавать чаты, отправлять сообщения, а также получать их в реальном времени.
+
+Сервис позволяет быстро и эффективно получать чаты, а также порционно получать историю сообщений в чате, тем самым не перегружая базу данных запросами.
+
+---
+## Core features
+
+### Управление чатом
+- Создание чатов
+- Получение чатов
+- Оптимизация запросов
+	- Хранение последнего сообщения (+ его временную метку и отправителя)
+	- Хранение кол-ва сообщений в чате
+### Передача сообщений
+- Создавать сообщения
+- Получать историю сообщений
+- Получать непрочитанные сообщения
+- Оптимизация запросов
+	- Использование пагинации, для новых и для старых сообщений
+	- Использование SnowflakeID
+	- Использование index
+### Получение сообщений в реальном времени
+- соединение WebSocket
+- отправка новых сообщений всем участникам в чате в реальном времени
+### Состояние сообщений
+- Сообщения имеют статус, прочитанные или нет 
+- Получать кол-во непрочитанных сообщений
+- Оптимизация запросов:
+	- Хранения последнего прочитанного сообщения, для последующего отбора новых и старых по средствам сравнения
+
+---
+
+## Architecture overview
+HTTP request → handler → service → repository
+### Layers
+
+#### Handler
+- Parses request body
+- Validates input
+- Passes data to the service layer
+
+#### Service
+- Implements core business logic
+- Управляет хранением и предоставлением чатов и сообщений
+- Позволяет выполнять различные действия с чатами или сообщениями
+- Uses repository for persistence
+
+#### Repository
+- Handles database access
+- Управляет чатами и сообщениями
+
+This separation keeps responsibilities isolated and allows individual layers to evolve independently.
+
+---
+## Communication Model
+
+Сервис использует гибридную коммуникационную модель:
+- HTTP API, для выполнения различных действий, таких как, создания чатов, отправка сообщений, обновление состояния сообщений, а также для получения данных, например, чатов или истории сообщений.
+- WebSocket для различных обновлений, например, появлении нового чата, сообщений
+Такой подход делает зоны ответственности более чёткими, тем самым сохраняя ясность и возможность расширять продукт в будущем.
+
+---
+
+## Pagination strategy
+
+The service uses cursor-based pagination based on Snowflake IDs.
+
+- `before` is used to load older messages
+- `after` is used to fetch newer messages
+- `limit` controls page size
+
+This approach avoids performance issues of offset-based pagination.
+
+---
+
+## Http API
+
+### Post /internal/users
+Позволяет создать локальную копию пользователя, для последующих локальных проверок.
+
+Request:
+```json
+{
+  "user_id": UUID,	
+  "username": string,
+}
+```
+Constraints:
+- user_id: валидный UUID
+- username: 4-32 символа
+
+Response:
+
+| Code |        Body         | Description              |
+| ---- | :-----------------: | ------------------------ |
+| 201  |   "user created"    | User created             |
+| 400  | "invalid json body" | Invalid request body     |
+| 400  |   "invalid UUID"    | Invalid UUID             |
+| 400  | "invalid username"  | Invalid username         |
+| 400  |   "userID taken"    | User with such ID exists |
+| 500  |  "internal error"   | Server error             |
+### Эндпоинты для выполнения действий с чатами и сообщениями
+
+Все запросы требуют заголовок Header, содержащий id пользователя, которых был до этого сохранён локально
+```
+X-User-ID
+```
+
+Пути защищены Middleware, которое предоставляет доступ только сохранённым локально пользователям.
+
+Если будет произведена попытка выполнить не авторизованное действия, будет возвращён ответ с Http ошибкой 403.
+#### Get /ws
+Апгрейдит HTTP соединение до WS соединения, которое сервер далее использует для отправки событий (тут можно сделать ссылку на главу с событиями)
+
+Response:
+
+| Code |       Body       | Description                    |
+| ---- | :--------------: | ------------------------------ |
+| 101  |        -         | Изменение протокола соединения |
+| 500  | "internal error" | Server error                   |
+
+#### Get /chats
+Позволяет получить все чаты пользователя.
+
+Response:
+
+| Code |                                                                                            Body                                                                                            | Description              |
+| ---- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | ------------------------ |
+| 200  | `{"chats":[{"id": UUID, "name": string "participants": [UUID], "last_message": {"id": SnowflakeID, "content": string, "sender_id": UUID, "created_at": timestamp}, "unread_count": int}]}` | Чаты пользователя        |
+| 200  |                                                                                       `{"chats":[]}`                                                                                       | У пользователя нет чатов |
+| 500  |                                                                                      "internal error"                                                                                      | Server error             |
+
+---
+#### Post /chats
+Позволяет создать новый чат.
+
+Request:
+```json
+{
+  "name": string,
+  "participants":[UUID]
+}
+```
+
+Constraints:
+- name: 2-32 символов
+- participants: массив из валидных UUID, пользователей, которые приглашаются в чат 
+
+Response:
+
+| Code |               Body                | Description                                               |
+| ---- | :-------------------------------: | --------------------------------------------------------- |
+| 201  |           `{"id":UUID}`           | Chat created                                              |
+| 400  |        "invalid json body"        | Invalid request body                                      |
+| 400  |          "invalid name"           | Не валидное название чата                                 |
+| 400  | "not existing participant {UUID}" | Участник чата с UUID {UUID} не был добавлен как локальный |
+| 500  |         "internal error"          | Server error                                              |
+#### Эндпоинты для получения, отправки и прочтения сообщений
+Такие эндпоинты защишены Midlleware, которая позволяет выполнять действия только с чатами, в которых участвует пользователь.
+
+Если будет произведена попытка выполнить не авторизованное действия, будет возвращён ответ с Http ошибкой 403.
+##### Get /chats/{id}/messages?params
+Позволяет получить сообщения в чате.
+
+Get params:
+
+| Param  | Expected value | Description                                      |
+| ------ | -------------- | ------------------------------------------------ |
+| after  | SnowflakeID    | Получить сообщения после определённого сообщения |
+| before | SnowflakeID    | Получить сообщения до определённого сообщения    |
+| limit  | int            | Лимитирует количество сообщений                  |
+Нельзя использовать after и before одновременно 
+
+Response:
+
+| Code | Body                                                                                                                                                | Description                              |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 200  | `{"messages":[{"id":SnowflakeID, "sender_id": UUID, "content": string, "created_at": timestamp}], "has_more_before": bool, "has_more_after": bool}` | Сообщения по запросу                     |
+| 400  | "invalid json body"                                                                                                                                 | Invalid request body                     |
+| 400  | "invalid param {param} value"                                                                                                                       | Не верный параметры запроса              |
+| 400  | "used before and after params at the same time"                                                                                                     | Используются before и after в одно время |
+| 500  | "internal error"                                                                                                                                    | Server error                             |
+
+##### Post /chats/{id}/messages
+Позволяет создать новое сообщение в чате.
+
+Request:
+```json
+{
+  "content": string
+}
+```
+Constraints:
+- content: не более 10 000 символов
+
+Response:
+
+| Code |         Body         | Description                  |
+| ---- | :------------------: | ---------------------------- |
+| 201  | `{"id":SnowflakeID}` | Message created              |
+| 400  | "invalid json body"  | Invalid request body         |
+| 400  | "not existing chat"  | Чат с таким ID не существует |
+| 500  |   "internal error"   | Server error                 |
+
+##### Post /chats/{id}/read
+Позволяет прочитать все сообщения имеющие ID меньше (включая), чем переданное
+
+Request:
+```json
+{
+  "last_read_message_id": SnowflakeID
+}
+```
+Constraints:
+- last_read_message_id: валидный ID
+
+Response:
+
+| Code |          Body          | Description              |
+| ---- | :--------------------: | ------------------------ |
+| 204  |           -            | Messages marked as read  |
+| 400  |  "invalid json body"   | Invalid request body     |
+| 400  |  "not existing chat"   | Нет чата с таким ID      |
+| 400  | "not existing message" | Нет сообщения с таким ID |
+| 500  |    "internal error"    | Server error             |
+
+---
+
+## WebSocket events
+Только сервер может передавать какие-то события, через WebSocket, сообщения клиента будут игнорироваться.
+
+Каждое событие обязательно имеет поле `type`:
+```json
+{
+	"type": {"название события"}
+	// Другие поля соответсвующие событию
+}
+```
+### `connected`
+Вызывается, если пользователь успешно подключился к WS.
+#### Event body
+```json
+{
+	"type": "connected"
+}
+```
+### `new_chat`
+Вызывается, если был добавлен новый чат, к которому принадлежит пользователь. 
+#### Event body
+```json
+{
+	"type": "new_chat",
+	"chat":{
+		"id": UUID,
+		"name": string,
+		"participants": [UUID]
+	} 
+}
+```
+### `new_message`
+Вызывается, если в каком-то чате, которому принадлежит пользователь было добавлено новое сообщение.
+#### Event body
+```json
+{
+	"type": "new_message",
+	"message": {
+		"id": SnowflakeID,
+		"chat_id": UUID,
+	    "sender_id": UUID,
+	    "content": string,
+	    "created_at": timestamp
+	}
+}
+```
+### `disconnected`
+Вызывается, если пользователь по каким-то причинам был отсоединён от WS.
+#### Event body
+```json
+{
+	"type": "disconnected"
+}
+```
+
+---
+
+## What is intentionally missing
+
+- Аутентификация, сервис доверяет переданным UUID пользователей
+- На данный момент нельзя добавлять какой-либо контент исключая текстовый
+- Нет возможности просмотреть статус прочитанной сообщения для других пользователей
+
+These decisions were made to keep the service focused, minimal, and suitable for learning purposes.
+
+---
+## Running locally
+
+1. Prepare PostgreSQL database and user.
+
+2. Create `.env` file in the project root (or export variables directly):
+
+```bash
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=message_db
+DB_USER=message_user
+DB_PASSWORD=message_password
+DB_SSLMODE=disable
+```
+
+3. Run migrations (example with `migrate` CLI):
+
+```bash
+migrate -path ./migrations/postgres -database "postgres://message_user:message_password@localhost:5432/message_db?sslmode=disable" up
+```
+
+4. Start server:
+
+```bash
+go run ./cmd/server
+```
+
+Server will be available at:
+
+```bash
+http://localhost:8080
+```
