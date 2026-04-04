@@ -14,35 +14,26 @@ import (
 type MessageUseCase struct {
 	messagеs    MessagesRepository
 	chats       ChatsRepository
-	users       UsersRepository
 	notifier    Notifier
 	idGenerator IDGenerator
 	limit       int
 }
 
-func New(m MessagesRepository, limit int, c ChatsRepository, u UsersRepository, n Notifier, g IDGenerator) *MessageUseCase {
+func New(m MessagesRepository, limit int, c ChatsRepository, n Notifier, g IDGenerator) *MessageUseCase {
 	return &MessageUseCase{
 		messagеs:    m,
 		chats:       c,
-		users:       u,
 		notifier:    n,
 		idGenerator: g,
 		limit:       limit,
 	}
 }
 
-type Direction string
-
-const (
-	DirectionForward  Direction = "forward"  // newer than cursor
-	DirectionBackward Direction = "backward" // older than cursor
-)
-
 type GetMessagesInput struct {
 	ChatID    uuid.UUID
 	UserID    uuid.UUID
 	Cursor    *int64
-	Direction Direction
+	Direction domain.Direction
 }
 
 type GetMessageOutput struct {
@@ -128,6 +119,7 @@ func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (
 	if err != nil {
 		return nil, fmt.Errorf("create messages: %w", err)
 	}
+	// TODO обновить тут последнее написанное сообщение
 	uuc.notifier.NotifyChat(ctx, in.ChatID, &wsevent.NewMessage{
 		Message: ws.Message{
 			ID:        message.ID,
@@ -168,7 +160,7 @@ func (uuc *MessageUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput)
 	if !exists {
 		return ErrMessageNotInChat
 	}
-	err = uuc.messagеs.UpdateLastReaded(ctx, in.MessageID, in.ChatID)
+	err = uuc.messagеs.UpdateLastReaded(ctx, in.UserID, in.MessageID, in.ChatID)
 	if err != nil {
 		return fmt.Errorf("markAsRead messages: %w", err)
 	}

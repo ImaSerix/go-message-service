@@ -9,18 +9,15 @@ import (
 )
 
 type MessagesRepository interface {
-	GetMessages(ctx context.Context, cursorID *int64, chatID uuid.UUID, direction Direction, limit int) ([]*domain.Message, bool, error)
+	GetMessages(ctx context.Context, cursorID *int64, chatID uuid.UUID, direction domain.Direction, limit int) ([]*domain.Message, bool, error)
 	Create(ctx context.Context, message *domain.Message) (*domain.Message, error)
 	ExistsInChat(ctx context.Context, id int64, chatID uuid.UUID) (bool, error)
-	UpdateLastReaded(ctx context.Context, messageID int64, chatID uuid.UUID) error
+	UpdateLastReaded(ctx context.Context, userID uuid.UUID, messageID int64, chatID uuid.UUID) error
+	UpdateLastMessage //TODO Сделать вот это
 }
 
 type ChatsRepository interface {
 	UserIsParticipant(ctx context.Context, userID uuid.UUID, id uuid.UUID) (bool, error)
-	Exists(ctx context.Context, id uuid.UUID) (bool, error)
-}
-
-type UsersRepository interface {
 	Exists(ctx context.Context, id uuid.UUID) (bool, error)
 }
 

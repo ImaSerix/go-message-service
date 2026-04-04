@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -9,4 +11,5 @@ type Chat struct {
 	Name         string
 	LastMessage  *Message
 	MessageCount int
+	CreatedAt    time.Time
 }

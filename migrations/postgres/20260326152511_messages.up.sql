@@ -7,6 +7,11 @@ CREATE TABLE messages (
     created_at timestamp DEFAULT now()
 );
 
+ALTER TABLE chats
+ADD CONSTRAINT fk_last_message
+FOREIGN KEY (last_message_id)
+REFERENCES messages(id);
+
 CREATE INDEX idx_messages_chat_id_id 
 ON messages (chat_id, id DESC);
 
