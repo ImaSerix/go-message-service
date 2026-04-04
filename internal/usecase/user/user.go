@@ -1,9 +1,9 @@
 package user
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/dto"
@@ -15,25 +15,19 @@ type UsersUseCase struct {
 	users UsersRepository
 }
 
-type CreateInput struct {
-	ID       uuid.UUID
-	Username string
-}
+func (uuc *UsersUseCase) Create(ctx context.Context, in *CreateInput) (*dto.User, error) {
 
-func (uuc *UsersUseCase) Create(in *CreateInput) (*dto.User, error) {
-	if in.ID == uuid.Nil {
-		return nil, ErrInvalidUUID
-	}
-	trimmedUsername := strings.TrimSpace(in.Username)
-	if trimmedUsername == "" || len(trimmedUsername) < 2 || len(trimmedUsername) > 32 {
-		return nil, ErrInvalidUsername
+	trimmedUsername, err := in.Validate()
+	if err != nil {
+		return nil, err
 	}
 
 	user := &domain.User{
 		ID:       uuid.New(),
 		Username: trimmedUsername,
 	}
-	user, err := uuc.users.Create(user)
+
+	user, err = uuc.users.Create(ctx, user)
 	if err != nil {
 		if errors.Is(err, repository.ErrAlreadyExists) {
 			return nil, ErrAlreadyExists

@@ -2,10 +2,12 @@ package message
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/dto"
+	"github.com/ImaSerix/go-message-service/internal/repository"
 	"github.com/ImaSerix/go-message-service/internal/ws"
 	"github.com/ImaSerix/go-message-service/internal/wsevent"
 	"github.com/google/uuid"
@@ -29,20 +31,8 @@ func New(m MessagesRepository, limit int, c ChatsRepository, n Notifier, g IDGen
 	}
 }
 
-type GetMessagesInput struct {
-	ChatID    uuid.UUID
-	UserID    uuid.UUID
-	Cursor    *int64
-	Direction domain.Direction
-}
-
-type GetMessageOutput struct {
-	Messages  []*dto.Message
-	HasMore   bool
-	NewCursor *int64
-}
-
 func (uuc *MessageUseCase) Get(ctx context.Context, in *GetMessagesInput) (*GetMessageOutput, error) {
+
 	isParticipant, err := uuc.chats.UserIsParticipant(ctx, in.UserID, in.ChatID)
 	if err != nil {
 		return nil, fmt.Errorf("get message: %w", err)
@@ -80,16 +70,12 @@ func (uuc *MessageUseCase) Get(ctx context.Context, in *GetMessagesInput) (*GetM
 	}, nil
 }
 
-type CreateMessageInput struct {
-	ChatID  uuid.UUID
-	UserID  uuid.UUID
-	Content string
-}
-
 func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (*dto.Message, error) {
-	if len(in.Content) == 0 {
-		return nil, ErrContentEmpty
+
+	if err := in.Validate(); err != nil {
+		return nil, err
 	}
+
 	isParticipant, err := uuc.chats.UserIsParticipant(ctx, in.UserID, in.ChatID)
 	if err != nil {
 		return nil, fmt.Errorf("create message: %w", err)
@@ -97,6 +83,7 @@ func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (
 	if !isParticipant {
 		return nil, ErrUserIsNotParticipant
 	}
+
 	exists, err := uuc.chats.Exists(ctx, in.ChatID)
 	if err != nil {
 		return nil, fmt.Errorf("create messages: %w", err)
@@ -104,11 +91,13 @@ func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (
 	if !exists {
 		return nil, ErrChatNotExists
 	}
+
 	id, err := uuc.idGenerator.NewID()
 	if err != nil {
 		return nil, fmt.Errorf("create messages: failed generate id: %w", err)
 	}
 
+	// NOTE: Создавая сообщение также обновляется информация о последнем сообщении в чате
 	message := &domain.Message{
 		ID:       id,
 		ChatID:   in.ChatID,
@@ -117,9 +106,12 @@ func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (
 	}
 	message, err = uuc.messagеs.Create(ctx, message)
 	if err != nil {
+		if errors.Is(err, repository.ErrAlreadyExists) {
+			return nil, ErrAlreadyExists
+		}
 		return nil, fmt.Errorf("create messages: %w", err)
 	}
-	// TODO обновить тут последнее написанное сообщение
+
 	uuc.notifier.NotifyChat(ctx, in.ChatID, &wsevent.NewMessage{
 		Message: ws.Message{
 			ID:        message.ID,
@@ -139,6 +131,7 @@ type ReadMessageInput struct {
 }
 
 func (uuc *MessageUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput) error {
+
 	isParticipant, err := uuc.chats.UserIsParticipant(ctx, in.UserID, in.ChatID)
 	if err != nil {
 		return fmt.Errorf("markAsRead message: %w", err)
@@ -146,6 +139,7 @@ func (uuc *MessageUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput)
 	if !isParticipant {
 		return ErrUserIsNotParticipant
 	}
+
 	exists, err := uuc.chats.Exists(ctx, in.ChatID)
 	if err != nil {
 		return fmt.Errorf("markAsRead messages: %w", err)
@@ -153,6 +147,7 @@ func (uuc *MessageUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput)
 	if !exists {
 		return ErrChatNotExists
 	}
+
 	exists, err = uuc.messagеs.ExistsInChat(ctx, in.MessageID, in.ChatID)
 	if err != nil {
 		return fmt.Errorf("markAsRead messages: %w", err)
@@ -160,6 +155,7 @@ func (uuc *MessageUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput)
 	if !exists {
 		return ErrMessageNotInChat
 	}
+
 	err = uuc.messagеs.UpdateLastReaded(ctx, in.UserID, in.MessageID, in.ChatID)
 	if err != nil {
 		return fmt.Errorf("markAsRead messages: %w", err)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/repository"
@@ -17,20 +18,51 @@ type ChatsRepository struct {
 	db *sql.DB
 }
 
-// Create stores chat and adds users as participants
+// Create stores chat and inserts users as participants
 func (cr *ChatsRepository) Create(ctx context.Context, chat *domain.Chat, participants []uuid.UUID) (*domain.Chat, error) {
-	err := cr.db.QueryRowContext(ctx, `INSERT INTO chats (id, name) VALUES ($1, $2) RETURNING message_count, created_at`, chat.ID, chat.Name).Scan(&chat.MessageCount, &chat.CreatedAt)
+
+	if len(participants) == 0 {
+		return nil, repository.ErrEmptyParticipants
+	}
+
+	tx, err := cr.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create chat: %w", err)
+	}
+	defer tx.Rollback()
+
+	err = tx.QueryRowContext(ctx, `INSERT INTO chats (id, name) VALUES ($1, $2) RETURNING *`, chat.ID, chat.Name).
+		Scan(
+			&chat.ID,
+			&chat.Name,
+			&chat.MessageCount,
+			&chat.LastMessage.ID,
+			&chat.LastMessage.SenderID,
+			&chat.LastMessage.Content,
+			&chat.LastMessage.CreatedAt,
+			&chat.CreatedAt)
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok {
 			if pgErr.Code == "23505" {
 				return nil, repository.ErrAlreadyExists
 			}
 		}
-		return nil, err
+		return nil, fmt.Errorf("create chat: %w", err)
 	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO chats_users (chat_id, user_id) SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`, chat.ID, participants)
+	if err != nil {
+		return nil, fmt.Errorf("create chat: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("create chat: %w", err)
+	}
+
 	return chat, nil
 }
 func (cr *ChatsRepository) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*domain.Chat, error) {
+
 	query := `SELECT 
 				id, 
 				name, 
@@ -44,67 +76,97 @@ func (cr *ChatsRepository) GetUserChats(ctx context.Context, userID uuid.UUID) (
 			WHERE id IN (SELECT chat_id FROM users_chats WHERE user_id = $1);`
 	rows, err := cr.db.QueryContext(ctx, query, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getUserChats: %w", err)
 	}
-	var chats []*domain.Chat
+	defer rows.Close()
+
+	chats := make([]*domain.Chat, 0)
 	for rows.Next() {
 		var chat domain.Chat
-		if err := rows.Scan(&chat.ID, &chat.Name, &chat.MessageCount, &chat.LastMessage.ID, &chat.LastMessage.SenderID, &chat.LastMessage.Content, &chat.LastMessage.CreatedAt, &chat.CreatedAt); err != nil {
-			return nil, err
+		var lastMessageID *int64
+		var senderID *uuid.UUID
+		var content *string
+		var createdAt *time.Time
+		if err := rows.Scan(
+			&chat.ID,
+			&chat.Name,
+			&chat.MessageCount,
+			&lastMessageID,
+			&senderID,
+			&content,
+			&createdAt,
+			&chat.CreatedAt); err != nil {
+			return nil, fmt.Errorf("getUserChats: %w", err)
+		}
+		if lastMessageID != nil {
+			chat.LastMessage = &domain.Message{
+				ID:        *lastMessageID,
+				ChatID:    chat.ID,
+				SenderID:  *senderID,
+				Content:   *content,
+				CreatedAt: *createdAt,
+			}
 		}
 		chats = append(chats, &chat)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getUserChats: %w", err)
 	}
 
 	return chats, nil
 }
 func (cr *ChatsRepository) GetChatsParticipants(ctx context.Context, chatIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
+
 	rows, err := cr.db.QueryContext(ctx, `SELECT chat_id, user_id FROM users_chats WHERE chat_id = ANY($1)`, chatIDs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getChatsParticipants: %w", err)
 	}
+	defer rows.Close()
+
 	chatParticipants := make(map[uuid.UUID][]uuid.UUID)
 	for rows.Next() {
 		var chatID uuid.UUID
 		var participantID uuid.UUID
 		if err := rows.Scan(&chatID, &participantID); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getChatsParticipants: %w", err)
 		}
 		chatParticipants[chatID] = append(chatParticipants[chatID], participantID)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getChatsParticipants: %w", err)
 	}
 
 	return chatParticipants, nil
 }
 func (cr *ChatsRepository) UserIsParticipant(ctx context.Context, userID uuid.UUID, id uuid.UUID) (bool, error) {
+
 	var isInChat int
 	err := cr.db.QueryRowContext(ctx, `SELECT 1 FROM users_chats WHERE chat_id = $1 AND user_id = $2`, id, userID).Scan(&isInChat)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("chat userIsParticioants: %w", err)
 	}
 	if isInChat != 1 {
-		return false, fmt.Errorf("db returned something unexpected")
+		return false, fmt.Errorf("chat userIsParticioants: db returned something unexpected: %v", isInChat)
 	}
+
 	return true, nil
 }
 func (cr *ChatsRepository) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
+
 	var chatExists int
 	err := cr.db.QueryRowContext(ctx, `SELECT 1 FROM chats WHERE chat_id = $1`, id).Scan(&chatExists)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("chat exists: %w", err)
 	}
 	if chatExists != 1 {
-		return false, fmt.Errorf("db returned something unexpected")
+		return false, fmt.Errorf("chat exists: db returned something unexpected: %v", chatExists)
 	}
+
 	return true, nil
 }

@@ -7,4 +7,5 @@ var (
 	ErrChatNotExists        = errors.New("chat not exists")
 	ErrMessageNotInChat     = errors.New("message not in chat")
 	ErrContentEmpty         = errors.New("content empty")
+	ErrAlreadyExists        = errors.New("already exists")
 )

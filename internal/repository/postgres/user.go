@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/repository"
@@ -15,6 +16,7 @@ type UsersRepository struct {
 }
 
 func (ur *UsersRepository) Create(ctx context.Context, user *domain.User) (*domain.User, error) {
+
 	_, err := ur.db.ExecContext(ctx, `INSERT INTO users (id, username) VALUES ($1, $2)`, user.ID, user.Username)
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok {
@@ -22,14 +24,16 @@ func (ur *UsersRepository) Create(ctx context.Context, user *domain.User) (*doma
 				return nil, repository.ErrAlreadyExists
 			}
 		}
-		return nil, err
+		return nil, fmt.Errorf("user create: %w", err)
 	}
+
 	return user, nil
 }
 func (ur *UsersRepository) GetExistingIDs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+
 	rows, err := ur.db.QueryContext(ctx, `SELECT id FROM users WHERE id = ANY($1)`, ids)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("users GetExistingIDs: %w", err)
 	}
 	defer rows.Close()
 
@@ -37,13 +41,14 @@ func (ur *UsersRepository) GetExistingIDs(ctx context.Context, ids []uuid.UUID) 
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("users GetExistingIDs: %w", err)
 		}
 		result = append(result, id)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("users GetExistingIDs: %w", err)
 	}
+
 	return result, nil
 }

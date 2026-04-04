@@ -2,11 +2,12 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/dto"
+	"github.com/ImaSerix/go-message-service/internal/repository"
 	"github.com/ImaSerix/go-message-service/internal/ws"
 	"github.com/ImaSerix/go-message-service/internal/wsevent"
 	"github.com/google/uuid"
@@ -28,12 +29,13 @@ func New(c ChatsRepository, m MessagesRepository, u UsersRepository, n Notifier)
 	}
 }
 
-type CreateChatInput struct {
-	Name         string
-	Participants []uuid.UUID
-}
-
 func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.Chat, error) {
+
+	trimmedName, err := in.Validate(ctx, cuc.users)
+	if err != nil {
+		return nil, err
+	}
+
 	existingIDs, err := cuc.users.GetExistingIDs(ctx, in.Participants)
 	if err != nil {
 		return nil, fmt.Errorf("create chat: %w", err)
@@ -45,10 +47,8 @@ func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.
 			users: diff,
 		}
 	}
-	trimmedName := strings.TrimSpace(in.Name)
-	if trimmedName == "" || len(trimmedName) < 2 || len(trimmedName) > 32 {
-		return nil, ErrInvalidName
-	}
+
+	// Note: Репозиторий сохраняет новый чат, а также добавляет к нему пользователей-участников, так как чат без участников в пределах системы не имеет смысла
 	chat := &domain.Chat{
 		ID:           uuid.New(),
 		Name:         trimmedName,
@@ -57,11 +57,13 @@ func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.
 	}
 	chat, err = cuc.chats.Create(ctx, chat, in.Participants)
 	if err != nil {
+		if errors.Is(err, repository.ErrAlreadyExists) {
+			return nil, ErrAlreadyExists
+		}
 		return nil, fmt.Errorf("create chat: %w", err)
 	}
 
-	// TODO Спросить у чатика об этом говне
-	cuc.notifier.NotifyChat(ctx, chat.ID, &wsevent.NewChat{
+	go cuc.notifier.NotifyChat(ctx, chat.ID, &wsevent.NewChat{
 		Chat: ws.Chat{
 			ID:           chat.ID,
 			Name:         chat.Name,
@@ -78,14 +80,11 @@ func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.
 	}, nil
 }
 
-type GetUserChatsInput struct {
-	UserID uuid.UUID
-}
-
 func (cuc *ChatsUseCase) GetUserChats(ctx context.Context, in *GetUserChatsInput) ([]*dto.Chat, error) {
+
 	chats, err := cuc.chats.GetUserChats(ctx, in.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("chat getByUser: %w", err)
+		return nil, fmt.Errorf("getUserChats: %w", err)
 	}
 
 	chatsIDs := make([]uuid.UUID, 0, len(chats))
@@ -94,13 +93,14 @@ func (cuc *ChatsUseCase) GetUserChats(ctx context.Context, in *GetUserChatsInput
 	}
 	chatsParticipants, err := cuc.chats.GetChatsParticipants(ctx, chatsIDs)
 	if err != nil {
-		return nil, fmt.Errorf("chat getByUser: %w", err)
+		return nil, fmt.Errorf("getUserChats: %w", err)
 	}
 
 	chatsUnreadMessagesCount, err := cuc.messages.GetUnreadCountForChats(ctx, in.UserID, chatsIDs)
 	if err != nil {
-		return nil, fmt.Errorf("chat getByUser: %w", err)
+		return nil, fmt.Errorf("getUserChats %w", err)
 	}
+
 	res := make([]*dto.Chat, 0, len(chats))
 	for _, chat := range chats {
 		var lastMessage *dto.Message

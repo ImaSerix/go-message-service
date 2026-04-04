@@ -10,6 +10,7 @@ import (
 var (
 	ErrInvalidName   = errors.New("invalid name")
 	ErrUserNotExists = errors.New("user not exists")
+	ErrAlreadyExists = errors.New("already exists")
 )
 
 type ErrUsersNotExists struct {

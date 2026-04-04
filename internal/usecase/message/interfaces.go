@@ -13,7 +13,7 @@ type MessagesRepository interface {
 	Create(ctx context.Context, message *domain.Message) (*domain.Message, error)
 	ExistsInChat(ctx context.Context, id int64, chatID uuid.UUID) (bool, error)
 	UpdateLastReaded(ctx context.Context, userID uuid.UUID, messageID int64, chatID uuid.UUID) error
-	UpdateLastMessage //TODO Сделать вот это
+	UpdateLastMessage(ctx context.Context, message *domain.Message)
 }
 
 type ChatsRepository interface {
