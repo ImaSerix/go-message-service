@@ -41,7 +41,7 @@
 ---
 
 ## Architecture overview
-HTTP request → handler → service → repository
+HTTP request → handler → usecase → repository
 ### Layers
 
 #### Handler
@@ -49,7 +49,7 @@ HTTP request → handler → service → repository
 - Validates input
 - Passes data to the service layer
 
-#### Service
+#### Usecase
 - Implements core business logic
 - Управляет хранением и предоставлением чатов и сообщений
 - Позволяет выполнять различные действия с чатами или сообщениями
@@ -107,7 +107,7 @@ Response:
 | 400  | "invalid json body" | Invalid request body     |
 | 400  |   "invalid UUID"    | Invalid UUID             |
 | 400  | "invalid username"  | Invalid username         |
-| 400  |   "userID taken"    | User with such ID exists |
+| 409  |   "userID taken"    | User with such ID exists |
 | 500  |  "internal error"   | Server error             |
 ### Эндпоинты для выполнения действий с чатами и сообщениями
 
@@ -118,7 +118,7 @@ X-User-ID
 
 Пути защищены Middleware, которое предоставляет доступ только сохранённым локально пользователям.
 
-Если будет произведена попытка выполнить не авторизованное действия, будет возвращён ответ с Http ошибкой 403.
+Если будет произведена попытка выполнить не авторизованное действия, будет возвращён ответ с Http ошибкой 401.
 #### Get /ws
 Апгрейдит HTTP соединение до WS соединения, которое сервер далее использует для отправки событий (тут можно сделать ссылку на главу с событиями)
 
@@ -163,7 +163,8 @@ Response:
 | 201  |           `{"id":UUID}`           | Chat created                                              |
 | 400  |        "invalid json body"        | Invalid request body                                      |
 | 400  |          "invalid name"           | Не валидное название чата                                 |
-| 400  | "not existing participant {UUID}" | Участник чата с UUID {UUID} не был добавлен как локальный |
+| 400  | "not existing participants [UUID]" | Участник чата с UUID {UUID} не был добавлен как локальный |
+| 403  | "user is not participant" | Пользователь не указал себя как участник чата |
 | 500  |         "internal error"          | Server error                                              |
 #### Эндпоинты для получения, отправки и прочтения сообщений
 Такие эндпоинты защишены Midlleware, которая позволяет выполнять действия только с чатами, в которых участвует пользователь.
@@ -189,6 +190,7 @@ Response:
 | 400  | "invalid json body"                                                                                                                                 | Invalid request body                     |
 | 400  | "invalid param {param} value"                                                                                                                       | Не верный параметры запроса              |
 | 400  | "used before and after params at the same time"                                                                                                     | Используются before и after в одно время |
+| 400  | "invalid limit"                                                                                                     | Слишком большой лимит запроса |
 | 500  | "internal error"                                                                                                                                    | Server error                             |
 
 ##### Post /chats/{id}/messages
@@ -242,29 +244,27 @@ Response:
 Каждое событие обязательно имеет поле `type`:
 ```json
 {
-	"type": {"название события"}
-	// Другие поля соответсвующие событию
+	"type": {"название события"},
+	"data": {
+		// Другие поля соответсвующие событию
+	}
+	
 }
 ```
-### `connected`
-Вызывается, если пользователь успешно подключился к WS.
-#### Event body
-```json
-{
-	"type": "connected"
-}
-```
+
 ### `new_chat`
 Вызывается, если был добавлен новый чат, к которому принадлежит пользователь. 
 #### Event body
 ```json
 {
 	"type": "new_chat",
-	"chat":{
-		"id": UUID,
-		"name": string,
-		"participants": [UUID]
-	} 
+	"data":{
+		"chat":{
+			"id": UUID,
+			"name": string,
+			"participants": [UUID]
+		}
+	}
 }
 ```
 ### `new_message`
@@ -273,21 +273,15 @@ Response:
 ```json
 {
 	"type": "new_message",
-	"message": {
-		"id": SnowflakeID,
-		"chat_id": UUID,
-	    "sender_id": UUID,
-	    "content": string,
-	    "created_at": timestamp
-	}
-}
-```
-### `disconnected`
-Вызывается, если пользователь по каким-то причинам был отсоединён от WS.
-#### Event body
-```json
-{
-	"type": "disconnected"
+	"data":{
+		"message": {
+			"id": SnowflakeID,
+			"chat_id": UUID,
+			"sender_id": UUID,
+			"content": string,
+			"created_at": timestamp
+		}
+	},
 }
 ```
 

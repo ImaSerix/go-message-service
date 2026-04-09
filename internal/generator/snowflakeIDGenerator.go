@@ -3,6 +3,8 @@ package generator
 import (
 	"sync"
 	"time"
+
+	"github.com/ImaSerix/go-message-service/internal/domain"
 )
 
 type SnowflakeIDGenerator struct {
@@ -12,8 +14,6 @@ type SnowflakeIDGenerator struct {
 	mutex         sync.Mutex
 	epoch         int64
 }
-
-type SnowflakeID int64
 
 func NewSnowflakeIDGenerator(nodeID int64, epoch int64) *SnowflakeIDGenerator {
 	return &SnowflakeIDGenerator{
@@ -30,7 +30,7 @@ const (
 	nodeShift    = sequenceBits
 )
 
-func (gen *SnowflakeIDGenerator) NewID() SnowflakeID {
+func (gen *SnowflakeIDGenerator) NewID() domain.SnowflakeID {
 	gen.mutex.Lock()
 	defer gen.mutex.Unlock()
 
@@ -50,6 +50,6 @@ func (gen *SnowflakeIDGenerator) NewID() SnowflakeID {
 		gen.lastTimestamp = timeStamp
 		id := (timeStamp << timeShift) | (gen.nodeID << nodeShift) | gen.sequence
 
-		return SnowflakeID(id)
+		return domain.SnowflakeID(id)
 	}
 }

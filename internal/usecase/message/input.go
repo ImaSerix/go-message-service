@@ -10,6 +10,7 @@ type GetMessagesInput struct {
 	UserID    uuid.UUID
 	Cursor    *int64
 	Direction domain.Direction
+	Limit     int
 }
 
 type CreateMessageInput struct {

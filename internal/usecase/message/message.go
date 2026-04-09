@@ -8,12 +8,17 @@ import (
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/dto"
 	"github.com/ImaSerix/go-message-service/internal/repository"
-	"github.com/ImaSerix/go-message-service/internal/ws"
 	"github.com/ImaSerix/go-message-service/internal/wsevent"
 	"github.com/google/uuid"
 )
 
-type MessageUseCase struct {
+type MessagesUseCase interface {
+	Get(ctx context.Context, in *GetMessagesInput) (*GetMessageOutput, error)
+	Create(ctx context.Context, in *CreateMessageInput) (*dto.Message, error)
+	MarkAsRead(ctx context.Context, in *ReadMessageInput) error
+}
+
+type messagesUseCase struct {
 	messagеs    MessagesRepository
 	chats       ChatsRepository
 	notifier    Notifier
@@ -21,8 +26,8 @@ type MessageUseCase struct {
 	limit       int
 }
 
-func New(m MessagesRepository, limit int, c ChatsRepository, n Notifier, g IDGenerator) *MessageUseCase {
-	return &MessageUseCase{
+func New(m MessagesRepository, limit int, c ChatsRepository, n Notifier, g IDGenerator) MessagesUseCase {
+	return &messagesUseCase{
 		messagеs:    m,
 		chats:       c,
 		notifier:    n,
@@ -31,7 +36,7 @@ func New(m MessagesRepository, limit int, c ChatsRepository, n Notifier, g IDGen
 	}
 }
 
-func (uuc *MessageUseCase) Get(ctx context.Context, in *GetMessagesInput) (*GetMessageOutput, error) {
+func (uuc *messagesUseCase) Get(ctx context.Context, in *GetMessagesInput) (*GetMessageOutput, error) {
 
 	isParticipant, err := uuc.chats.UserIsParticipant(ctx, in.UserID, in.ChatID)
 	if err != nil {
@@ -58,19 +63,27 @@ func (uuc *MessageUseCase) Get(ctx context.Context, in *GetMessagesInput) (*GetM
 			return nil, ErrMessageNotInChat
 		}
 	}
+	// TODO: Нужно ограничить максимальный лимит, ибо нефиг
 
-	messages, hasMore, err := uuc.messagеs.GetMessages(ctx, in.Cursor, in.ChatID, in.Direction, 50)
+	if in.Limit > uuc.limit {
+		return nil, ErrInvalidLimit
+	}
+
+	messages, hasMore, err := uuc.messagеs.GetMessages(ctx, in.Cursor, in.ChatID, in.Direction, in.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("get messages: %w", err)
 	}
+
+	newCursor := int64(messages[len(messages)-1].ID)
+
 	return &GetMessageOutput{
 		Messages:  toDTOList(messages),
 		HasMore:   hasMore,
-		NewCursor: &messages[len(messages)-1].ID,
+		NewCursor: &newCursor,
 	}, nil
 }
 
-func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (*dto.Message, error) {
+func (uuc *messagesUseCase) Create(ctx context.Context, in *CreateMessageInput) (*dto.Message, error) {
 
 	if err := in.Validate(); err != nil {
 		return nil, err
@@ -92,10 +105,7 @@ func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (
 		return nil, ErrChatNotExists
 	}
 
-	id, err := uuc.idGenerator.NewID()
-	if err != nil {
-		return nil, fmt.Errorf("create messages: failed generate id: %w", err)
-	}
+	id := uuc.idGenerator.NewID()
 
 	// NOTE: Создавая сообщение также обновляется информация о последнем сообщении в чате
 	message := &domain.Message{
@@ -113,8 +123,8 @@ func (uuc *MessageUseCase) Create(ctx context.Context, in *CreateMessageInput) (
 	}
 
 	uuc.notifier.NotifyChat(ctx, in.ChatID, &wsevent.NewMessage{
-		Message: ws.Message{
-			ID:        message.ID,
+		Message: wsevent.Message{
+			ID:        int64(message.ID),
 			ChatID:    message.ChatID,
 			SenderID:  message.SenderID,
 			Content:   message.Content,
@@ -130,7 +140,7 @@ type ReadMessageInput struct {
 	MessageID int64
 }
 
-func (uuc *MessageUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput) error {
+func (uuc *messagesUseCase) MarkAsRead(ctx context.Context, in *ReadMessageInput) error {
 
 	isParticipant, err := uuc.chats.UserIsParticipant(ctx, in.UserID, in.ChatID)
 	if err != nil {

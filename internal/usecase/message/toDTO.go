@@ -7,7 +7,7 @@ import (
 
 func toDTO(m *domain.Message) *dto.Message {
 	return &dto.Message{
-		ID:        m.ID,
+		ID:        int64(m.ID),
 		ChatID:    m.ChatID,
 		SenderID:  m.SenderID,
 		Content:   m.Content,

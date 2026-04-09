@@ -11,11 +11,21 @@ import (
 	"github.com/google/uuid"
 )
 
-type UsersUseCase struct {
+type UsersUseCase interface {
+	Create(ctx context.Context, in *CreateInput) (*dto.User, error)
+}
+
+type usersUseCase struct {
 	users UsersRepository
 }
 
-func (uuc *UsersUseCase) Create(ctx context.Context, in *CreateInput) (*dto.User, error) {
+func New(users UsersRepository) UsersUseCase {
+	return &usersUseCase{
+		users: users,
+	}
+}
+
+func (uuc *usersUseCase) Create(ctx context.Context, in *CreateInput) (*dto.User, error) {
 
 	trimmedUsername, err := in.Validate()
 	if err != nil {

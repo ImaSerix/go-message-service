@@ -18,6 +18,12 @@ type ChatsRepository struct {
 	db *sql.DB
 }
 
+func NewChatsRepository(db *sql.DB) *ChatsRepository {
+	return &ChatsRepository{
+		db: db,
+	}
+}
+
 // Create stores chat and inserts users as participants
 func (cr *ChatsRepository) Create(ctx context.Context, chat *domain.Chat, participants []uuid.UUID) (*domain.Chat, error) {
 
@@ -83,7 +89,7 @@ func (cr *ChatsRepository) GetUserChats(ctx context.Context, userID uuid.UUID) (
 	chats := make([]*domain.Chat, 0)
 	for rows.Next() {
 		var chat domain.Chat
-		var lastMessageID *int64
+		var lastMessageID *domain.SnowflakeID
 		var senderID *uuid.UUID
 		var content *string
 		var createdAt *time.Time
@@ -115,6 +121,30 @@ func (cr *ChatsRepository) GetUserChats(ctx context.Context, userID uuid.UUID) (
 
 	return chats, nil
 }
+
+// TODO: Этого нет в obsidian, также там парочку вещей которые используют middleware
+func (cr *ChatsRepository) GetChatParticipants(ctx context.Context, chatID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := cr.db.QueryContext(ctx, `SELECT user_id FROM users_chats WHERE chat_id = $1`, chatID)
+	if err != nil {
+		return nil, fmt.Errorf("getChatParticipants: %w", err)
+	}
+	defer rows.Close()
+
+	chatParticipants := []uuid.UUID{}
+	for rows.Next() {
+		var participantID uuid.UUID
+		if err := rows.Scan(&participantID); err != nil {
+			return nil, fmt.Errorf("getChatParticipants: %w", err)
+		}
+		chatParticipants = append(chatParticipants, participantID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("getChatParticipants: %w", err)
+	}
+
+	return chatParticipants, nil
+}
+
 func (cr *ChatsRepository) GetChatsParticipants(ctx context.Context, chatIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
 
 	rows, err := cr.db.QueryContext(ctx, `SELECT chat_id, user_id FROM users_chats WHERE chat_id = ANY($1)`, chatIDs)

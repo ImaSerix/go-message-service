@@ -19,6 +19,12 @@ type MessagesRepository struct {
 	db *sql.DB
 }
 
+func NewMessagesRepository(db *sql.DB) *MessagesRepository {
+	return &MessagesRepository{
+		db: db,
+	}
+}
+
 func (mr *MessagesRepository) GetUnreadCountForChats(ctx context.Context, userID uuid.UUID, chatIDs []uuid.UUID) (map[uuid.UUID]int, error) {
 	query := `SELECT 
 				uc.chat_id AS c_id,
@@ -158,12 +164,26 @@ func (mr *MessagesRepository) ExistsInChat(ctx context.Context, id int64, chatID
 func (mr *MessagesRepository) UpdateLastReaded(ctx context.Context, userID uuid.UUID, messageID int64, chatID uuid.UUID) error {
 
 	var updated int
-	err := mr.db.QueryRowContext(ctx, `UPDATE users_chats SET last_read_message_id = $1 WHERE user_id = $2 and chat_id = $3 RETURNING 1`).Scan(&updated)
+	err := mr.db.QueryRowContext(ctx, `UPDATE users_chats SET last_read_message_id = $1 WHERE user_id = $2 and chat_id = $3 RETURNING 1`, messageID, userID, chatID).Scan(&updated)
 	if err != nil {
 		return err
 	}
 	if updated != 1 {
-		return fmt.Errorf("messages existsInChat: db returned something unexpected: %v", updated)
+		return fmt.Errorf("messages updateLastReaded: db returned something unexpected: %v", updated)
+	}
+
+	return nil
+}
+
+func (mr *MessagesRepository) UpdateLastMessageInChat(ctx context.Context, message *domain.Message) error {
+
+	var updated int
+	err := mr.db.QueryRowContext(ctx, `UPDATE chats SET last_message_id = $1, last_message_sender_id = $2, last_message_content = $3, last_message_created_at = $4 WHERE chat_id = $5 RETURNING 1`, message.ID, message.SenderID, message.Content, message.CreatedAt, message.ChatID).Scan(&updated)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return fmt.Errorf("messages updateLastMessageInChat: db returned something unexpected: %v", updated)
 	}
 
 	return nil

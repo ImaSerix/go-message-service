@@ -22,7 +22,6 @@ type MessagesRepository interface {
 	GetUnreadCountForChats(ctx context.Context, userID uuid.UUID, chatIDs []uuid.UUID) (map[uuid.UUID]int, error)
 }
 
-// TODO Нужно добавить это в обсидиан заметки
 type Notifier interface {
 	NotifyChat(ctx context.Context, chatID uuid.UUID, event wsevent.WSEvent)
 }

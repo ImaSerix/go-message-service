@@ -8,16 +8,16 @@ import (
 )
 
 var (
-	ErrInvalidName   = errors.New("invalid name")
-	ErrUserNotExists = errors.New("user not exists")
-	ErrAlreadyExists = errors.New("already exists")
+	ErrInvalidName            = errors.New("invalid name")
+	ErrAlreadyExists          = errors.New("already exists")
+	ErrCallerIsNotParticipant = errors.New("caller is not participant")
 )
 
 type ErrUsersNotExists struct {
-	msg   string
-	users []uuid.UUID
+	Msg   string
+	Users []uuid.UUID
 }
 
 func (err *ErrUsersNotExists) Error() string {
-	return fmt.Sprintf("%s %v", err.msg, err.users)
+	return fmt.Sprintf("%s %v", err.Msg, err.Users)
 }

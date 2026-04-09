@@ -7,7 +7,7 @@ import (
 )
 
 type Message struct {
-	ID        int64
+	ID        SnowflakeID
 	ChatID    uuid.UUID
 	SenderID  uuid.UUID
 	Content   string

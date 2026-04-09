@@ -8,20 +8,24 @@ import (
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/dto"
 	"github.com/ImaSerix/go-message-service/internal/repository"
-	"github.com/ImaSerix/go-message-service/internal/ws"
 	"github.com/ImaSerix/go-message-service/internal/wsevent"
 	"github.com/google/uuid"
 )
 
-type ChatsUseCase struct {
+type ChatsUseCase interface {
+	Create(ctx context.Context, in *CreateChatInput) (*dto.Chat, error)
+	GetUserChats(ctx context.Context, in *GetUserChatsInput) ([]*dto.Chat, error)
+}
+
+type chatsUseCase struct {
 	chats    ChatsRepository
 	messages MessagesRepository
 	users    UsersRepository
 	notifier Notifier
 }
 
-func New(c ChatsRepository, m MessagesRepository, u UsersRepository, n Notifier) *ChatsUseCase {
-	return &ChatsUseCase{
+func New(c ChatsRepository, m MessagesRepository, u UsersRepository, n Notifier) ChatsUseCase {
+	return &chatsUseCase{
 		chats:    c,
 		messages: m,
 		users:    u,
@@ -29,8 +33,7 @@ func New(c ChatsRepository, m MessagesRepository, u UsersRepository, n Notifier)
 	}
 }
 
-func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.Chat, error) {
-
+func (cuc *chatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.Chat, error) {
 	trimmedName, err := in.Validate(ctx, cuc.users)
 	if err != nil {
 		return nil, err
@@ -43,8 +46,8 @@ func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.
 	if len(existingIDs) != len(in.Participants) {
 		diff := difference(in.Participants, existingIDs)
 		return nil, &ErrUsersNotExists{
-			msg:   "some participants not exists",
-			users: diff,
+			Msg:   "some participants not exists",
+			Users: diff,
 		}
 	}
 
@@ -64,7 +67,7 @@ func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.
 	}
 
 	go cuc.notifier.NotifyChat(ctx, chat.ID, &wsevent.NewChat{
-		Chat: ws.Chat{
+		Chat: wsevent.Chat{
 			ID:           chat.ID,
 			Name:         chat.Name,
 			Participants: in.Participants,
@@ -80,7 +83,7 @@ func (cuc *ChatsUseCase) Create(ctx context.Context, in *CreateChatInput) (*dto.
 	}, nil
 }
 
-func (cuc *ChatsUseCase) GetUserChats(ctx context.Context, in *GetUserChatsInput) ([]*dto.Chat, error) {
+func (cuc *chatsUseCase) GetUserChats(ctx context.Context, in *GetUserChatsInput) ([]*dto.Chat, error) {
 
 	chats, err := cuc.chats.GetUserChats(ctx, in.UserID)
 	if err != nil {
@@ -106,7 +109,7 @@ func (cuc *ChatsUseCase) GetUserChats(ctx context.Context, in *GetUserChatsInput
 		var lastMessage *dto.Message
 		if chat.LastMessage != nil {
 			lastMessage = &dto.Message{
-				ID:        chat.LastMessage.ID,
+				ID:        int64(chat.LastMessage.ID),
 				ChatID:    chat.LastMessage.ChatID,
 				SenderID:  chat.LastMessage.SenderID,
 				Content:   chat.LastMessage.Content,
