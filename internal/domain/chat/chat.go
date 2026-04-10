@@ -42,5 +42,5 @@ func (c Chat) ID() ChatID {
 }
 
 func (c Chat) Name() Name {
-	return c.Name()
+	return c.name
 }

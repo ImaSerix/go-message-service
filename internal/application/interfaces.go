@@ -20,5 +20,5 @@ type MessagesRepository interface {
 }
 
 type Notifier interface {
-	NotifyChat(ctx context.Context, id chat.ChatID, event wsevent.WSEvent)
+	NotifyChat(chat *chat.Chat, event wsevent.WSEvent)
 }

@@ -11,11 +11,11 @@ var (
 	ErrAlreadyExists = errors.New("already exists")
 )
 
-type ErrUsersNotExists struct {
+type ErrUsersNotExist struct {
 	Msg   string
 	Users []user.UserID
 }
 
-func (err *ErrUsersNotExists) Error() string {
+func (err *ErrUsersNotExist) Error() string {
 	return fmt.Sprintf("%s %v", err.Msg, err.Users)
 }
