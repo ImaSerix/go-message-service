@@ -38,3 +38,7 @@ func (m Message) Content() Content {
 func (m Message) CreatedAt() *time.Time {
 	return m.createdAt
 }
+
+func (m *Message) SetCreatedAt(createdAt time.Time) {
+	m.createdAt = &createdAt
+}

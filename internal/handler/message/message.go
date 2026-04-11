@@ -7,24 +7,24 @@ import (
 	"log/slog"
 	"net/http"
 
+	appcmd "github.com/ImaSerix/go-message-service/internal/application/command"
+	appqry "github.com/ImaSerix/go-message-service/internal/application/query"
 	"github.com/ImaSerix/go-message-service/internal/domain"
+	domainchat "github.com/ImaSerix/go-message-service/internal/domain/chat"
 	"github.com/ImaSerix/go-message-service/internal/handler"
 	"github.com/ImaSerix/go-message-service/internal/handler/auth"
-	"github.com/ImaSerix/go-message-service/internal/usecase/message"
 )
 
 type MessageHandler struct {
-	muc message.MessagesUseCase
+	cmd *appcmd.CommandService
+	qry *appqry.QueryService
 }
 
-func New(muc message.MessagesUseCase) *MessageHandler {
-	return &MessageHandler{
-		muc: muc,
-	}
+func New(cmd *appcmd.CommandService, qry *appqry.QueryService) *MessageHandler {
+	return &MessageHandler{cmd: cmd, qry: qry}
 }
 
-// NOTE: требует запустить middleware, которое обработает все параметры и засунет их в контекст, вернув ошибки, если их нет
-func (muc *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (mh *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserID(r.Context())
 	if !ok {
 		slog.Error("reading user from context failed")
@@ -40,24 +40,21 @@ func (muc *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var cursor *int64
-	// NOTE: Получаем более новые сообщения первыми, далее уже сатые по дефолту
-	// TODO: Описать это поведение ещё в доках, проверить не налажал ли я тут по итогу
 	direction := domain.DirectionForward
 	afterParam, ok := AfterParam(r.Context())
 	if ok {
 		cursor = &afterParam
-		direction = domain.DirectionForward
 	}
-	BeforeParam, ok := BeforeParam(r.Context())
+	beforeParam, ok := BeforeParam(r.Context())
 	if ok {
 		if cursor != nil {
-			http.Error(w, "used before and after at the same time", http.StatusInternalServerError)
+			http.Error(w, "used before and after at the same time", http.StatusBadRequest)
 			return
 		}
 		direction = domain.DirectionBackward
-		cursor = &BeforeParam
+		cursor = &beforeParam
 	}
-	// TODO: Опять же надо придумать ошибку и под ограничение лимита, ибо нефиг
+
 	limitParam, ok := LimitParam(r.Context())
 	if !ok {
 		slog.Error("reading limit from context failed")
@@ -65,27 +62,18 @@ func (muc *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	in := message.GetMessagesInput{
+	out, err := mh.qry.HandleGetUserMessages(r.Context(), &appqry.GetUserMessagesQry{
 		ChatID:    chatID,
 		UserID:    userID,
 		Cursor:    cursor,
 		Direction: direction,
 		Limit:     limitParam,
-	}
-
-	messages, err := muc.muc.Get(r.Context(), &in)
+	})
 	if err != nil {
 		switch {
-		case errors.Is(err, message.ErrUserIsNotParticipant):
-			// NOTE: фактически middleware до, должен был обработать этот случай, поэтому handler не берётся обрабатывать этот случай
-			handler.LogError(r, errors.New("get message handler, called without authоМiddleware"))
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		case errors.Is(err, message.ErrChatNotExists):
-			http.Error(w, fmt.Sprintf("invalid chat %v", in.ChatID), http.StatusBadRequest)
-		case errors.Is(err, message.ErrMessageNotInChat):
-			http.Error(w, fmt.Sprintf("no message %v in chat %v", *in.Cursor, in.ChatID), http.StatusBadRequest)
-		// TODO: Вот это нужно добавить и в readme и в obsidian
-		case errors.Is(err, message.ErrInvalidLimit):
+		case errors.Is(err, appqry.ErrMessageNotInChat):
+			http.Error(w, fmt.Sprintf("no message %v in chat %v", *cursor, chatID), http.StatusBadRequest)
+		case errors.Is(err, appqry.ErrInvalidLimit):
 			http.Error(w, "invalid limit", http.StatusBadRequest)
 		default:
 			handler.LogError(r, err)
@@ -94,27 +82,16 @@ func (muc *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := GetMessagesResponse{
-		Messages:     []GetMessagesResponseMessage{},
-		CursorBefore: cursor,
-		CursorAfter:  messages.NewCursor,
-	}
-	for _, mDTO := range messages.Messages {
-		m := GetMessagesResponseMessage{
-			ID:        mDTO.ID,
-			SenderID:  mDTO.SenderID,
-			Content:   mDTO.Content,
-			CreatedAt: mDTO.CreatedAt,
-		}
-		out.Messages = append(out.Messages, m)
+	resp := GetMessagesResponse{Messages: []GetMessagesResponseMessage{}, CursorBefore: cursor, CursorAfter: out.NewCursor}
+	for _, m := range out.Messages {
+		resp.Messages = append(resp.Messages, GetMessagesResponseMessage{ID: m.ID, SenderID: m.SenderID, Content: m.Content, CreatedAt: m.CreatedAt})
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(out)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// TODO: Надо в целом проверить на соответсвие, иначе тупо получается
-func (muc *MessageHandler) Send(w http.ResponseWriter, r *http.Request) {
+func (mh *MessageHandler) Send(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserID(r.Context())
 	if !ok {
 		slog.Error("reading user from context failed")
@@ -130,54 +107,40 @@ func (muc *MessageHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req SendMessageRequest
-
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-
 	if err := decoder.Decode(&req); err != nil {
 		handler.LogError(r, err)
-
 		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
 	}
 
-	in := message.CreateMessageInput{
-		ChatID:  chatID,
-		UserID:  userID,
-		Content: req.Content,
-	}
-
-	mes, err := muc.muc.Create(r.Context(), &in)
+	id, err := mh.cmd.HandleCreateMessage(r.Context(), &appcmd.CreateMessageCmd{ChatID: chatID, SenderID: userID, Content: req.Content})
 	if err != nil {
-		// TODO: Опять же чего-то в описании не хватает, именно ошибок!!!!!!!
 		switch {
-		case errors.Is(err, message.ErrUserIsNotParticipant):
-			// NOTE: фактически middleware до, должен был обработать этот случай, поэтому handler не берётся обрабатывать этот случай
-			handler.LogError(r, errors.New("get message handler, called without authоМiddleware"))
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		case errors.Is(err, message.ErrChatNotExists):
-			http.Error(w, fmt.Sprintf("invalid chat %v", in.ChatID), http.StatusBadRequest)
+		case errors.Is(err, appcmd.ErrChatNotExists):
+			http.Error(w, fmt.Sprintf("invalid chat %v", chatID), http.StatusBadRequest)
+		case errors.Is(err, domainchat.ErrCallerIsNotParticipant):
+			http.Error(w, "unauthorizated action", http.StatusForbidden)
 		default:
 			handler.LogError(r, err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
-	}
-
-	out := SendMessageResponse{
-		ID: mes.ID,
+		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(out)
+	_ = json.NewEncoder(w).Encode(SendMessageResponse{ID: id})
 }
 
-func (muc *MessageHandler) Read(w http.ResponseWriter, r *http.Request) {
+func (mh *MessageHandler) Read(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserID(r.Context())
 	if !ok {
 		slog.Error("reading user from context failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	// TODO: Опять же надо подправить
+
 	chatID, ok := ChatID(r.Context())
 	if !ok {
 		slog.Error("reading chat from context failed")
@@ -186,33 +149,23 @@ func (muc *MessageHandler) Read(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req ReadMessageRequest
-
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-
 	if err := decoder.Decode(&req); err != nil {
 		handler.LogError(r, err)
-
 		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
 	}
 
-	in := message.ReadMessageInput{
-		ChatID:    chatID,
-		UserID:    userID,
-		MessageID: req.LastReadMessageID,
-	}
-
-	err := muc.muc.MarkAsRead(r.Context(), &in)
+	err := mh.cmd.MarkAsRead(r.Context(), &appcmd.ReadMessageCmd{ChatID: chatID, CallerID: userID, MessageID: req.LastReadMessageID})
 	if err != nil {
 		switch {
-		case errors.Is(err, message.ErrUserIsNotParticipant):
-			// NOTE: фактически middleware до, должен был обработать этот случай, поэтому handler не берётся обрабатывать этот случай
-			handler.LogError(r, errors.New("get message handler, called without authоМiddleware"))
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		case errors.Is(err, message.ErrChatNotExists):
-			http.Error(w, fmt.Sprintf("invalid chat %v", in.ChatID), http.StatusBadRequest)
-		case errors.Is(err, message.ErrMessageNotInChat):
-			http.Error(w, fmt.Sprintf("no message %v in chat %v", in.MessageID, in.ChatID), http.StatusBadRequest)
+		case errors.Is(err, appcmd.ErrChatNotExists):
+			http.Error(w, fmt.Sprintf("invalid chat %v", chatID), http.StatusBadRequest)
+		case errors.Is(err, appcmd.ErrMessageNotInChat):
+			http.Error(w, fmt.Sprintf("no message %v in chat %v", req.LastReadMessageID, chatID), http.StatusBadRequest)
+		case errors.Is(err, domainchat.ErrReaderIsNotParticipant):
+			http.Error(w, "unauthorizated action", http.StatusForbidden)
 		default:
 			handler.LogError(r, err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

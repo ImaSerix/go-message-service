@@ -1,4 +1,4 @@
-package application
+package command
 
 import (
 	"github.com/ImaSerix/go-message-service/internal/domain/chat"
@@ -62,6 +62,10 @@ type ReadMessageInput struct {
 }
 
 func NewReadMessageInput(cmd *ReadMessageCmd) (*ReadMessageInput, error) {
+	if cmd == nil {
+		return nil, ErrInvalidCommand
+	}
+
 	return &ReadMessageInput{
 		chatID:    idConverter[uuid.UUID, chat.ChatID](cmd.ChatID),
 		callerID:  idConverter[uuid.UUID, chat.ParticipantID](cmd.CallerID),
@@ -70,15 +74,27 @@ func NewReadMessageInput(cmd *ReadMessageCmd) (*ReadMessageInput, error) {
 }
 
 type CreateUserInput struct {
+	ID       user.UserID
 	Username user.Username
 }
 
 func NewCreateUserInput(cmd *CreateUserCmd) (*CreateUserInput, error) {
+	if cmd == nil {
+		return nil, ErrInvalidCommand
+	}
+
 	username, err := user.NewUsername(cmd.Username)
 	if err != nil {
 		return nil, err
 	}
+
+	id := idConverter[uuid.UUID, user.UserID](uuid.New())
+	if cmd.UserID != nil {
+		id = idConverter[uuid.UUID, user.UserID](*cmd.UserID)
+	}
+
 	return &CreateUserInput{
+		ID:       id,
 		Username: username,
 	}, nil
 }

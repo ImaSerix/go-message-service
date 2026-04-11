@@ -19,9 +19,10 @@ func NewChat(id ChatID, name Name, callerID ParticipantID, participants []Partic
 	}
 
 	chat := Chat{
-		id:           id,
-		name:         name,
-		participants: participants,
+		id:                  id,
+		name:                name,
+		participants:        participants,
+		lastReadedMessageID: make(map[ParticipantID]SnowflakeID),
 	}
 
 	if !chat.isParticipant(callerID) {
@@ -84,4 +85,9 @@ func (c Chat) ID() ChatID {
 
 func (c Chat) Name() Name {
 	return c.name
+}
+
+func (c Chat) LastReadMessageID(readerID ParticipantID) (SnowflakeID, bool) {
+	id, ok := c.lastReadedMessageID[readerID]
+	return id, ok
 }

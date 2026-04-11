@@ -1,4 +1,4 @@
-package application
+package command
 
 // result is slice with elements, which has a, but does not have b
 func missing[T ~[16]byte](a, b []T) []T {

@@ -1,4 +1,4 @@
-package application
+package command
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/ImaSerix/go-message-service/internal/domain/message"
 	"github.com/ImaSerix/go-message-service/internal/domain/user"
 	"github.com/ImaSerix/go-message-service/internal/wsevent"
+	"github.com/google/uuid"
 )
 
 type ChatsRepository interface {
@@ -27,7 +28,7 @@ type MessagesRepository interface {
 }
 
 type Notifier interface {
-	NotifyChat(chat *chat.Chat, event wsevent.WSEvent)
+	NotifyChat(ctx context.Context, chatID uuid.UUID, event wsevent.WSEvent)
 }
 
 type IDGenerator interface {

@@ -1,4 +1,4 @@
-package application
+package command
 
 import (
 	"context"
@@ -68,7 +68,7 @@ func (cs *CommandService) HandleCreateChat(ctx context.Context, cmd *CreateChatC
 		return uuid.Nil, fmt.Errorf("create chat: %w", err)
 	}
 
-	go cs.notifier.NotifyChat(c, &wsevent.NewChat{
+	go cs.notifier.NotifyChat(ctx, idConverter[chat.ChatID, uuid.UUID](c.ID()), &wsevent.NewChat{
 		Chat: wsevent.Chat{
 			ID:           c.ID(),
 			Name:         c.Name(),
@@ -114,7 +114,7 @@ func (cs *CommandService) HandleCreateMessage(ctx context.Context, cmd *CreateMe
 	}
 
 	// TODO: лучше сделать какие-то конверторы, правда это сложно, так как фактически тогда об wsevent должны знать домены, что не хорошо
-	cs.notifier.NotifyChat(c, &wsevent.NewMessage{
+	cs.notifier.NotifyChat(ctx, idConverter[chat.ChatID, uuid.UUID](c.ID()), &wsevent.NewMessage{
 		Message: wsevent.Message{
 			ID:        m.ID(),
 			ChatID:    m.ChatID(),
@@ -154,7 +154,7 @@ func (cs *CommandService) MarkAsRead(ctx context.Context, cmd *ReadMessageCmd) e
 
 	err = c.ReadMessage(
 		in.callerID,
-		chat.SnowflakeID(cmd.MessageID),
+		chat.SnowflakeID(in.messageID),
 		func(si chat.SnowflakeID, ci chat.ChatID) (bool, error) {
 			exists, err := cs.messages.ExistsInChat(ctx, in.messageID, in.chatID)
 			if err != nil {
@@ -180,7 +180,7 @@ func (cs *CommandService) HandlerCreateUser(ctx context.Context, cmd *CreateUser
 		return uuid.Nil, err
 	}
 
-	u := user.NewUser(idConverter[uuid.UUID, user.UserID](uuid.New()), in.Username)
+	u := user.NewUser(in.ID, in.Username)
 
 	u, err = cs.users.Create(ctx, u)
 	if err != nil {
