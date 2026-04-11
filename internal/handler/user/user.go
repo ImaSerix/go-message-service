@@ -5,18 +5,17 @@ import (
 	"errors"
 	"net/http"
 
+	appcmd "github.com/ImaSerix/go-message-service/internal/application/command"
+	domainuser "github.com/ImaSerix/go-message-service/internal/domain/user"
 	"github.com/ImaSerix/go-message-service/internal/handler"
-	"github.com/ImaSerix/go-message-service/internal/usecase/user"
 )
 
 type UserHandler struct {
-	uuc user.UsersUseCase
+	cmd *appcmd.CommandService
 }
 
-func New(uuc user.UsersUseCase) *UserHandler {
-	return &UserHandler{
-		uuc: uuc,
-	}
+func New(cmd *appcmd.CommandService) *UserHandler {
+	return &UserHandler{cmd: cmd}
 }
 
 func (uh *UserHandler) SaveLocal(w http.ResponseWriter, r *http.Request) {
@@ -27,23 +26,16 @@ func (uh *UserHandler) SaveLocal(w http.ResponseWriter, r *http.Request) {
 
 	if err := decoder.Decode(&req); err != nil {
 		handler.LogError(r, err)
-
 		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
 	}
 
-	in := user.CreateInput{
-		ID:       req.UserID,
-		Username: req.Username,
-	}
-
-	_, err := uh.uuc.Create(r.Context(), &in)
+	_, err := uh.cmd.HandlerCreateUser(r.Context(), &appcmd.CreateUserCmd{UserID: &req.UserID, Username: req.Username})
 	if err != nil {
 		switch {
-		case errors.Is(err, user.ErrInvalidUUID):
-			http.Error(w, "invalid UUID", http.StatusBadRequest)
-		case errors.Is(err, user.ErrInvalidUsername):
+		case errors.Is(err, domainuser.ErrInvalidUsername):
 			http.Error(w, "invalid username", http.StatusBadRequest)
-		case errors.Is(err, user.ErrAlreadyExists):
+		case errors.Is(err, appcmd.ErrAlreadyExists):
 			http.Error(w, "userID taken", http.StatusConflict)
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -52,5 +44,5 @@ func (uh *UserHandler) SaveLocal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode("user created")
+	_ = json.NewEncoder(w).Encode("user created")
 }

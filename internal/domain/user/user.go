@@ -15,3 +15,7 @@ func NewUser(id UserID, username Username) *User {
 func (u User) ID() UserID {
 	return u.id
 }
+
+func (u User) Username() Username {
+	return u.username
+}

@@ -85,6 +85,13 @@ func (qs *QueryService) HandleGetUserMessages(ctx context.Context, qry *GetUserM
 	if err != nil {
 		return nil, fmt.Errorf("get messages: %w", err)
 	}
+	if len(messages) == 0 {
+		return &GetMessageOutput{
+			Messages:  []*dto.Message{},
+			HasMore:   hasMore,
+			NewCursor: nil,
+		}, nil
+	}
 
 	newCursor := int64(messages[len(messages)-1].ID)
 
@@ -121,7 +128,7 @@ func (qs *QueryService) getUserChats(ctx context.Context, userID uuid.UUID) ([]*
 					c.last_message_content, 
 					c.last_message_created_at,
 					cu.last_read_message_id,
-					c.createdAt
+					c.created_at
 				FROM chat_users cu
 				INNER JOIN chats c
 				ON cu.chat_id = c.id
@@ -136,15 +143,15 @@ func (qs *QueryService) getUserChats(ctx context.Context, userID uuid.UUID) ([]*
 	for rows.Next() {
 		c := getUserChatsOutput{}
 		if err := rows.Scan(
-			c.id,
-			c.name,
-			c.messageCount,
-			c.lastMessageID,
-			c.lastMessageSenderID,
-			c.lastMessageContent,
-			c.lastMessageCreatedAt,
-			c.lastReadMessageID,
-			c.createdAt,
+			&c.id,
+			&c.name,
+			&c.messageCount,
+			&c.lastMessageID,
+			&c.lastMessageSenderID,
+			&c.lastMessageContent,
+			&c.lastMessageCreatedAt,
+			&c.lastReadMessageID,
+			&c.createdAt,
 		); err != nil {
 			return nil, fmt.Errorf("getUserChats: %w", err)
 		}
@@ -160,7 +167,7 @@ func (qs *QueryService) getUnreadCount(ctx context.Context, userID uuid.UUID, ch
 	query := `SELECT 
 				uc.chat_id AS c_id,
 				COUNT(m.id) AS unread_count
-			FROM users_chats uc
+			FROM chat_users uc
 			LEFT JOIN messages m 
 			ON m.chat_id = uc.chat_id
 			AND m.id > COALESCE(uc.last_read_message_id, 0)
@@ -212,7 +219,6 @@ func (qs *QueryService) getMessages(ctx context.Context, cursorID *int64, chatID
 	query.WriteString("SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id = $1")
 
 	args := []any{chatID}
-	args = append(args, chatID)
 	if cursorID != nil {
 		if direction == domain.DirectionForward {
 			query.WriteString(" AND id > $2 ORDER BY id ASC")

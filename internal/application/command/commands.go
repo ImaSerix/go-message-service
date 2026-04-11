@@ -1,4 +1,4 @@
-package application
+package command
 
 import "github.com/google/uuid"
 
@@ -21,5 +21,6 @@ type ReadMessageCmd struct {
 }
 
 type CreateUserCmd struct {
+	UserID   *uuid.UUID
 	Username string
 }
