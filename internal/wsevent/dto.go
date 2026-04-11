@@ -4,15 +4,15 @@ import (
 	"time"
 
 	"github.com/ImaSerix/go-message-service/internal/domain/chat"
-	"github.com/google/uuid"
+	"github.com/ImaSerix/go-message-service/internal/domain/message"
 )
 
 type Message struct {
-	ID        int64     `json:"id"`
-	ChatID    uuid.UUID `json:"chat_id"`
-	SenderID  uuid.UUID `json:"sender_id"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        message.SnowflakeID `json:"id"`
+	ChatID    message.ChatID      `json:"chat_id"`
+	SenderID  message.SenderID    `json:"sender_id"`
+	Content   message.Content     `json:"content"`
+	CreatedAt time.Time           `json:"created_at"`
 }
 
 type Chat struct {

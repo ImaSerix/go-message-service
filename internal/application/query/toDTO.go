@@ -1,4 +1,4 @@
-package message
+package query
 
 import (
 	"github.com/ImaSerix/go-message-service/internal/domain"

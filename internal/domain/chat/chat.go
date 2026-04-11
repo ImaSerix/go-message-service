@@ -10,7 +10,7 @@ type Chat struct {
 
 	participants        []ParticipantID
 	lastMessage         *message.Message
-	lastReadedMessageID SnowflakeID
+	lastReadedMessageID map[ParticipantID]SnowflakeID
 }
 
 func NewChat(id ChatID, name Name, callerID ParticipantID, participants []ParticipantID) (*Chat, error) {
@@ -18,19 +18,60 @@ func NewChat(id ChatID, name Name, callerID ParticipantID, participants []Partic
 		return nil, ErrParticipantsEmpty
 	}
 
-	set := make(map[ParticipantID]struct{}, len(participants))
-	for _, p := range participants {
-		set[p] = struct{}{}
-	}
-	if _, ok := set[callerID]; !ok {
-		return nil, ErrCallerIsNotParticipant
-	}
-
-	return &Chat{
+	chat := Chat{
 		id:           id,
 		name:         name,
 		participants: participants,
-	}, nil
+	}
+
+	if !chat.isParticipant(callerID) {
+		return nil, ErrCallerIsNotParticipant
+	}
+
+	return &chat, nil
+}
+
+func (c *Chat) SendMessage(sender ParticipantID, message *message.Message) error {
+	if !c.isParticipant(sender) {
+		return ErrCallerIsNotParticipant
+	}
+	c.lastMessage = message
+
+	return nil
+}
+
+// NOTE: ReadMessage ожидает, что будет передана функция, которая определит существует ли сообщение до которого хочет прочитать в чате
+func (c *Chat) ReadMessage(readerID ParticipantID, messageID SnowflakeID, ExistsInChat func(SnowflakeID, ChatID) (bool, error)) error {
+	if !c.isParticipant(readerID) {
+		return ErrReaderIsNotParticipant
+	}
+
+	exists, err := ExistsInChat(messageID, c.id)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrMessageNotInChat
+	}
+
+	if !c.lastReadedMessageID[readerID].Older(messageID) {
+		return ErrNewerMessageIsAlreadyRead
+	}
+
+	c.lastReadedMessageID[readerID] = messageID
+	return nil
+}
+
+func (c Chat) isParticipant(participant ParticipantID) bool {
+	set := make(map[ParticipantID]struct{}, len(c.participants))
+	for _, p := range c.participants {
+		set[p] = struct{}{}
+	}
+	if _, ok := set[participant]; !ok {
+		return false
+	}
+
+	return true
 }
 
 func (c Chat) Participants() []ParticipantID {

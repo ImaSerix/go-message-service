@@ -11,3 +11,7 @@ func NewUser(id UserID, username Username) *User {
 		username: username,
 	}
 }
+
+func (u User) ID() UserID {
+	return u.id
+}

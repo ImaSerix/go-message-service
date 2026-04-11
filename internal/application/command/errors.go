@@ -8,7 +8,11 @@ import (
 )
 
 var (
-	ErrAlreadyExists = errors.New("already exists")
+	ErrAlreadyExists    = errors.New("already exists")
+	ErrInvalidCommand   = errors.New("invalid command")
+	ErrNotFound         = errors.New("invalid command")
+	ErrChatNotExists    = errors.New("chat not exists")
+	ErrMessageNotInChat = errors.New("messsage not in chat")
 )
 
 type ErrUsersNotExist struct {
