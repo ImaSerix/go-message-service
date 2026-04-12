@@ -10,8 +10,8 @@ import (
 	appcmd "github.com/ImaSerix/go-message-service/internal/application/command"
 	appqry "github.com/ImaSerix/go-message-service/internal/application/query"
 	domainchat "github.com/ImaSerix/go-message-service/internal/domain/chat"
-	"github.com/ImaSerix/go-message-service/internal/handler"
-	"github.com/ImaSerix/go-message-service/internal/handler/auth"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
 	"github.com/google/uuid"
 )
 

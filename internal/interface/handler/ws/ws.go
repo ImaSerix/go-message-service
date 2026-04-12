@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/ImaSerix/go-message-service/internal/handler/auth"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
 	"github.com/gorilla/websocket"
 )
 

@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ImaSerix/go-message-service/internal/handler"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler"
 	"github.com/google/uuid"
 )
 
-func AutheMiddleware(users UsersRepository) func(http.Handler) http.Handler {
+func AutheMiddleware(users UsersQry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 

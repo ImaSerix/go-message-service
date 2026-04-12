@@ -7,7 +7,7 @@ import (
 
 	appcmd "github.com/ImaSerix/go-message-service/internal/application/command"
 	domainuser "github.com/ImaSerix/go-message-service/internal/domain/user"
-	"github.com/ImaSerix/go-message-service/internal/handler"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler"
 )
 
 type UserHandler struct {

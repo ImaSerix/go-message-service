@@ -6,6 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type UsersRepository interface {
+type UsersQry interface {
 	Exists(ctx context.Context, id uuid.UUID) (bool, error)
 }

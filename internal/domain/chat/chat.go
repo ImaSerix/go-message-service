@@ -32,6 +32,16 @@ func NewChat(id ChatID, name Name, callerID ParticipantID, participants []Partic
 	return &chat, nil
 }
 
+func RehydrateChat(id ChatID, n Name, participants []ParticipantID, lastMessage *message.Message, lastReadedMessageID map[ParticipantID]SnowflakeID) *Chat {
+	return &Chat{
+		id:                  id,
+		name:                n,
+		participants:        participants,
+		lastMessage:         lastMessage,
+		lastReadedMessageID: lastReadedMessageID,
+	}
+}
+
 func (c *Chat) SendMessage(sender ParticipantID, message *message.Message) error {
 	if !c.isParticipant(sender) {
 		return ErrCallerIsNotParticipant

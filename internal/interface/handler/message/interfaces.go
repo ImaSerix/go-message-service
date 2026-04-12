@@ -6,6 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type ChatsRepository interface {
+type ChatsQry interface {
 	UserIsParticipant(ctx context.Context, userID uuid.UUID, id uuid.UUID) (bool, error)
 }

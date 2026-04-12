@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ImaSerix/go-message-service/internal/handler"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler"
 	"github.com/go-chi/chi"
 	"github.com/google/uuid"
 )

@@ -4,11 +4,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ImaSerix/go-message-service/internal/handler"
-	"github.com/ImaSerix/go-message-service/internal/handler/auth"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
 )
 
-func AuthoMiddleware(chats ChatsRepository) func(http.Handler) http.Handler {
+func AuthoMiddleware(chats ChatsQry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 

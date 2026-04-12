@@ -8,15 +8,15 @@ import (
 	appqry "github.com/ImaSerix/go-message-service/internal/application/query"
 	"github.com/ImaSerix/go-message-service/internal/config"
 	"github.com/ImaSerix/go-message-service/internal/generator"
-	"github.com/ImaSerix/go-message-service/internal/handler/auth"
-	chatHandler "github.com/ImaSerix/go-message-service/internal/handler/chat"
-	messageHandler "github.com/ImaSerix/go-message-service/internal/handler/message"
-	userHandler "github.com/ImaSerix/go-message-service/internal/handler/user"
-	wsHandler "github.com/ImaSerix/go-message-service/internal/handler/ws"
-	"github.com/ImaSerix/go-message-service/internal/notifier"
-	"github.com/ImaSerix/go-message-service/internal/repository/postgres"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
+	chatHandler "github.com/ImaSerix/go-message-service/internal/interface/handler/chat"
+	messageHandler "github.com/ImaSerix/go-message-service/internal/interface/handler/message"
+	userHandler "github.com/ImaSerix/go-message-service/internal/interface/handler/user"
+	wsHandler "github.com/ImaSerix/go-message-service/internal/interface/handler/ws"
+	wsHub "github.com/ImaSerix/go-message-service/internal/interface/ws"
+	"github.com/ImaSerix/go-message-service/internal/repository/postgres/command"
+	"github.com/ImaSerix/go-message-service/internal/repository/postgres/query"
 	"github.com/ImaSerix/go-message-service/internal/storage"
-	wsHub "github.com/ImaSerix/go-message-service/internal/ws"
 	"github.com/go-chi/chi"
 	"github.com/joho/godotenv"
 )
@@ -33,21 +33,21 @@ func main() {
 		log.Fatalf("error while connecting to db: %v", err)
 	}
 
-	usersRepository := postgres.NewUsersRepository(db)
-	chatsRepository := postgres.NewChatsRepository(db)
+	usersRepository := command.NewUsersRepository(db)
+	chatsRepository := command.NewChatsRepository(db)
+	messagesRepository := command.NewMessagesRepository(db)
 
 	hub := wsHub.New(config.WSHub.ReadLimit, config.WSHub.PongWait, config.WSHub.PingPerion, config.WSHub.WriteWait)
-	notifier := notifier.New(chatsRepository, hub)
 	idGenerator := generator.NewSnowflakeIDGenerator(config.IDGenerator.NodeID, config.IDGenerator.Epoch)
 
 	commandService := appcmd.NewCommandService(
-		appcmd.NewPGChatsRepository(db),
-		appcmd.NewPGMessagesRepository(db),
-		appcmd.NewPGUsersRepository(db),
-		notifier,
+		chatsRepository,
+		messagesRepository,
+		usersRepository,
+		hub,
 		idGenerator,
 	)
-	queryService := appqry.NewQueryService(db, config.MaxMessagePageSize)
+	queryService := appqry.NewQueryService(query.NewChatsQry(db), query.NewMessageQry(db), config.MaxMessagePageSize)
 
 	autheMiddleware := auth.AutheMiddleware(usersRepository)
 	authoMiddleware := messageHandler.AuthoMiddleware(chatsRepository)

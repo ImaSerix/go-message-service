@@ -22,6 +22,16 @@ type CommandService struct {
 	generator IDGenerator
 }
 
+func NewCommandService(chats ChatsRepository, messages MessagesRepository, users UsersRepository, notifier Notifier, generator IDGenerator) *CommandService {
+	return &CommandService{
+		chats:     chats,
+		messages:  messages,
+		users:     users,
+		notifier:  notifier,
+		generator: generator,
+	}
+}
+
 func (cs *CommandService) HandleCreateChat(ctx context.Context, cmd *CreateChatCmd) (uuid.UUID, error) {
 
 	in, err := NewCreateChatInput(cmd)
@@ -68,7 +78,7 @@ func (cs *CommandService) HandleCreateChat(ctx context.Context, cmd *CreateChatC
 		return uuid.Nil, fmt.Errorf("create chat: %w", err)
 	}
 
-	go cs.notifier.NotifyChat(ctx, idConverter[chat.ChatID, uuid.UUID](c.ID()), &wsevent.NewChat{
+	go cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewChat{
 		Chat: wsevent.Chat{
 			ID:           c.ID(),
 			Name:         c.Name(),
@@ -114,7 +124,7 @@ func (cs *CommandService) HandleCreateMessage(ctx context.Context, cmd *CreateMe
 	}
 
 	// TODO: лучше сделать какие-то конверторы, правда это сложно, так как фактически тогда об wsevent должны знать домены, что не хорошо
-	cs.notifier.NotifyChat(ctx, idConverter[chat.ChatID, uuid.UUID](c.ID()), &wsevent.NewMessage{
+	cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewMessage{
 		Message: wsevent.Message{
 			ID:        m.ID(),
 			ChatID:    m.ChatID(),

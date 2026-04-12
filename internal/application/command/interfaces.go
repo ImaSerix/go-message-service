@@ -28,7 +28,7 @@ type MessagesRepository interface {
 }
 
 type Notifier interface {
-	NotifyChat(ctx context.Context, chatID uuid.UUID, event wsevent.WSEvent)
+	SendToUsers(participants []uuid.UUID, event wsevent.WSEvent)
 }
 
 type IDGenerator interface {
