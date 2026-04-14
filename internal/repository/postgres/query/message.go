@@ -70,11 +70,7 @@ func (q *MessageQry) GetMessages(ctx context.Context, cursorID *int64, chatID uu
 		}
 		args = append(args, *cursorID)
 	} else {
-		if direction == domain.DirectionForward {
-			query.WriteString(" ORDER BY id ASC")
-		} else {
-			query.WriteString(" ORDER BY id DESC")
-		}
+		query.WriteString(" ORDER BY id DESC")
 	}
 
 	query.WriteString(fmt.Sprintf(" LIMIT %d", limit+1))

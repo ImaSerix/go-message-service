@@ -16,3 +16,8 @@ type GetUserMessagesQry struct {
 	Direction domain.Direction
 	Limit     int
 }
+
+type GetUserChatQry struct {
+	UserID uuid.UUID
+	ChatID uuid.UUID
+}

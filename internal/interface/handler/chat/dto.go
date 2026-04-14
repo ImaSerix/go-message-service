@@ -13,13 +13,12 @@ type GetUserResponseLastMessage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// TODO: Тут тоже изменения
 type GetUserResponseChat struct {
-	ID           uuid.UUID                   `json:"id"`
-	Name         string                      `json:"name"`
-	Participants []uuid.UUID                 `json:"participants"`
-	LastMessage  *GetUserResponseLastMessage `json:"last_message"`
-	MessageCount int                         `json:"message_count"`
-	UnreadCount  int                         `json:"unread_count"`
+	ID          uuid.UUID                   `json:"id"`
+	Name        string                      `json:"name"`
+	LastMessage *GetUserResponseLastMessage `json:"last_message"`
+	UnreadCount int                         `json:"unread_count"`
 }
 
 type GetUserResponse struct {

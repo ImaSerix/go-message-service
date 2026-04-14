@@ -22,6 +22,10 @@ func NewQueryService(chats ChatsQry, messages MessagesQry, limit int) *QueryServ
 	}
 }
 
+func (qs *QueryService) HandleGetChat(ctx context.Context, qry *GetUserChatQry) (*dto.Chat, error) {
+	// TODO: это тоже надо реапизовать
+}
+
 // TODO: Наверное стоит немного урезать возвращаемый чатами контент
 func (qs *QueryService) HandleGetUserChats(ctx context.Context, qry *GetUserChatsQry) ([]*dto.Chat, error) {
 	chats, err := qs.chats.GetUserChats(ctx, qry.UserID)
@@ -42,10 +46,9 @@ func (qs *QueryService) HandleGetUserChats(ctx context.Context, qry *GetUserChat
 	res := make([]*dto.Chat, 0, len(chats))
 	for _, chat := range chats {
 		dtoChat := dto.Chat{
-			ID:           chat.ID,
-			Name:         chat.Name,
-			MessageCount: chat.MessageCount,
-			UnreadCount:  unreadCountByChat[chat.ID],
+			ID:          chat.ID,
+			Name:        chat.Name,
+			UnreadCount: unreadCountByChat[chat.ID],
 
 			LastMessageID:        chat.LastMessageID,
 			LastMessageSenderID:  chat.LastMessageSenderID,

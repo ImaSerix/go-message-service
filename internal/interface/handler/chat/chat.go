@@ -12,7 +12,6 @@ import (
 	domainchat "github.com/ImaSerix/go-message-service/internal/domain/chat"
 	"github.com/ImaSerix/go-message-service/internal/interface/handler"
 	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
-	"github.com/google/uuid"
 )
 
 type ChatHandler struct {
@@ -50,14 +49,12 @@ func (ch *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
 				CreatedAt: *c.LastMessageCreatedAt,
 			}
 		}
-
+		// TODO: Тут рассинхрон с README
 		out.Chats = append(out.Chats, GetUserResponseChat{
-			ID:           c.ID,
-			Name:         c.Name,
-			Participants: []uuid.UUID{},
-			LastMessage:  lastMessage,
-			MessageCount: c.MessageCount,
-			UnreadCount:  c.UnreadCount,
+			ID:          c.ID,
+			Name:        c.Name,
+			LastMessage: lastMessage,
+			UnreadCount: c.UnreadCount,
 		})
 	}
 

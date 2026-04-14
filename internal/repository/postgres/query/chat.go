@@ -19,6 +19,8 @@ func NewChatsQry(db *sql.DB) *ChatsQry {
 	}
 }
 
+func (q *ChatsQry) GetChat(ctx context.Context, chatID uuid.UUID) (*)
+
 func (q *ChatsQry) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*query.GetUserChatsOutput, error) {
 
 	qry := `SELECT 

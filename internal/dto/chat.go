@@ -11,6 +11,7 @@ type Chat struct {
 	Name         string
 	MessageCount int
 	UnreadCount  int
+	Participants []uuid.UUID
 
 	LastMessageID        *int64
 	LastMessageSenderID  *uuid.UUID

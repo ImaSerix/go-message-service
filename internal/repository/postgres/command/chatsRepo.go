@@ -71,10 +71,10 @@ func (r *ChatsRepository) loadChat(ctx context.Context, id chat.ChatID) (*chat.C
 	defer rows.Close()
 
 	participants := make([]chat.ParticipantID, 0)
-	lastReadMessages := make(map[chat.ParticipantID]chat.SnowflakeID)
+	lastReadMessages := make(map[chat.ParticipantID]*chat.SnowflakeID)
 	for rows.Next() {
 		var participant chat.ParticipantID
-		var lastReadMessageID chat.SnowflakeID
+		var lastReadMessageID *chat.SnowflakeID
 		if err := rows.Scan(&participant, &lastReadMessageID); err != nil {
 			return nil, fmt.Errorf("load chat: %w", err)
 		}

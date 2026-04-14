@@ -80,8 +80,8 @@ func (cs *CommandService) HandleCreateChat(ctx context.Context, cmd *CreateChatC
 
 	go cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewChat{
 		Chat: wsevent.Chat{
-			ID:           c.ID(),
-			Name:         c.Name(),
+			ID:           idConverter[chat.ChatID, uuid.UUID](c.ID()),
+			Name:         string(c.Name()),
 			Participants: c.Participants(),
 		},
 	})
@@ -126,10 +126,10 @@ func (cs *CommandService) HandleCreateMessage(ctx context.Context, cmd *CreateMe
 	// TODO: лучше сделать какие-то конверторы, правда это сложно, так как фактически тогда об wsevent должны знать домены, что не хорошо
 	cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewMessage{
 		Message: wsevent.Message{
-			ID:        m.ID(),
-			ChatID:    m.ChatID(),
-			SenderID:  m.SenderID(),
-			Content:   m.Content(),
+			ID:        int64(m.ID()),
+			ChatID:    idConverter[message.ChatID, uuid.UUID](m.ChatID()),
+			SenderID:  idConverter[message.SenderID, uuid.UUID](m.SenderID()),
+			Content:   string(m.Content()),
 			CreatedAt: *m.CreatedAt(),
 		},
 	})
@@ -152,14 +152,6 @@ func (cs *CommandService) MarkAsRead(ctx context.Context, cmd *ReadMessageCmd) e
 		default:
 			return fmt.Errorf("markAsRead: %w", err)
 		}
-	}
-
-	exists, err := cs.messages.ExistsInChat(ctx, in.messageID, in.chatID)
-	if err != nil {
-		return fmt.Errorf("markAsRead: %w", err)
-	}
-	if !exists {
-		return ErrMessageNotInChat
 	}
 
 	err = c.ReadMessage(

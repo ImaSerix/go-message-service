@@ -10,7 +10,7 @@ type Chat struct {
 
 	participants        []ParticipantID
 	lastMessage         *message.Message
-	lastReadedMessageID map[ParticipantID]SnowflakeID
+	lastReadedMessageID map[ParticipantID]*SnowflakeID
 }
 
 func NewChat(id ChatID, name Name, callerID ParticipantID, participants []ParticipantID) (*Chat, error) {
@@ -22,7 +22,7 @@ func NewChat(id ChatID, name Name, callerID ParticipantID, participants []Partic
 		id:                  id,
 		name:                name,
 		participants:        participants,
-		lastReadedMessageID: make(map[ParticipantID]SnowflakeID),
+		lastReadedMessageID: make(map[ParticipantID]*SnowflakeID),
 	}
 
 	if !chat.isParticipant(callerID) {
@@ -32,7 +32,7 @@ func NewChat(id ChatID, name Name, callerID ParticipantID, participants []Partic
 	return &chat, nil
 }
 
-func RehydrateChat(id ChatID, n Name, participants []ParticipantID, lastMessage *message.Message, lastReadedMessageID map[ParticipantID]SnowflakeID) *Chat {
+func RehydrateChat(id ChatID, n Name, participants []ParticipantID, lastMessage *message.Message, lastReadedMessageID map[ParticipantID]*SnowflakeID) *Chat {
 	return &Chat{
 		id:                  id,
 		name:                n,
@@ -65,11 +65,11 @@ func (c *Chat) ReadMessage(readerID ParticipantID, messageID SnowflakeID, Exists
 		return ErrMessageNotInChat
 	}
 
-	if !c.lastReadedMessageID[readerID].Older(messageID) {
+	if c.lastReadedMessageID[readerID] != nil && !c.lastReadedMessageID[readerID].Older(messageID) {
 		return ErrNewerMessageIsAlreadyRead
 	}
 
-	c.lastReadedMessageID[readerID] = messageID
+	c.lastReadedMessageID[readerID] = &messageID
 	return nil
 }
 
@@ -97,7 +97,7 @@ func (c Chat) Name() Name {
 	return c.name
 }
 
-func (c Chat) LastReadMessageID(readerID ParticipantID) (SnowflakeID, bool) {
+func (c Chat) LastReadMessageID(readerID ParticipantID) (*SnowflakeID, bool) {
 	id, ok := c.lastReadedMessageID[readerID]
 	return id, ok
 }
