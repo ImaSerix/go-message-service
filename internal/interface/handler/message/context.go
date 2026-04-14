@@ -2,8 +2,6 @@ package message
 
 import (
 	"context"
-
-	"github.com/google/uuid"
 )
 
 type chatIDKeyType struct{}
@@ -17,15 +15,6 @@ var (
 	beforeKey = beforeParamKeyType{}
 	limitKey  = limitParamKeyType{}
 )
-
-func WithChatID(ctx context.Context, chatID uuid.UUID) context.Context {
-	return context.WithValue(ctx, chatIDKey, chatID)
-}
-
-func ChatID(ctx context.Context) (uuid.UUID, bool) {
-	value, ok := ctx.Value(chatIDKey).(uuid.UUID)
-	return value, ok
-}
 
 func WithAfterParam(ctx context.Context, after int64) context.Context {
 	return context.WithValue(ctx, afterKey, after)

@@ -13,6 +13,7 @@ import (
 	domainchat "github.com/ImaSerix/go-message-service/internal/domain/chat"
 	"github.com/ImaSerix/go-message-service/internal/interface/handler"
 	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
+	"github.com/ImaSerix/go-message-service/internal/interface/handler/chat"
 )
 
 type MessageHandler struct {
@@ -32,7 +33,7 @@ func (mh *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chatID, ok := ChatID(r.Context())
+	chatID, ok := chat.ChatID(r.Context())
 	if !ok {
 		slog.Error("reading chat from context failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -99,7 +100,7 @@ func (mh *MessageHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chatID, ok := ChatID(r.Context())
+	chatID, ok := chat.ChatID(r.Context())
 	if !ok {
 		slog.Error("reading chat from context failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -141,7 +142,7 @@ func (mh *MessageHandler) Read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chatID, ok := ChatID(r.Context())
+	chatID, ok := chat.ChatID(r.Context())
 	if !ok {
 		slog.Error("reading chat from context failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)

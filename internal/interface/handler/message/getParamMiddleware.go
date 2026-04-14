@@ -5,26 +5,13 @@ import (
 	"strconv"
 
 	"github.com/ImaSerix/go-message-service/internal/interface/handler"
-	"github.com/go-chi/chi"
-	"github.com/google/uuid"
 )
 
 // TODO Скорее всего нужно уточнить, что как бы требуется вызывать middleware, которая будет как бы собирать параметры из запроса
-func ParamMiddleware() func(http.Handler) http.Handler {
+func GetParamMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			chatIDParam := chi.URLParam(r, "chatID")
-			if chatIDParam != "" {
-				chatID, ok := uuid.Parse(chatIDParam)
-				if ok != nil {
-					http.Error(w, "invalid chatID param", http.StatusBadRequest)
-					return
-				}
-				ctx = WithChatID(ctx, chatID)
-			} else {
-				http.Error(w, "invalid chatID param", http.StatusBadRequest)
-			}
 
 			beforeParam := r.URL.Query().Get("before")
 			if beforeParam != "" {

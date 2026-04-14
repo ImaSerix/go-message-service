@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type GetUserChatResponse struct {
+	ID           uuid.UUID   `json:"id"`
+	Name         string      `json:"name"`
+	MessageCount int         `json:"message_count"`
+	Participants []uuid.UUID `json:"participants"`
+	CreatedAt    time.Time   `json:"created_at"`
+}
+
 type GetUserResponseLastMessage struct {
 	ID        int64     `json:"id"`
 	Content   string    `json:"content"`

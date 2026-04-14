@@ -3,6 +3,8 @@ package query
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/ImaSerix/go-message-service/internal/dto"
 	"github.com/google/uuid"
@@ -22,15 +24,55 @@ func NewQueryService(chats ChatsQry, messages MessagesQry, limit int) *QueryServ
 	}
 }
 
-func (qs *QueryService) HandleGetChat(ctx context.Context, qry *GetUserChatQry) (*dto.Chat, error) {
-	// TODO: это тоже надо реапизовать
+// NOTE: Фактически запрос на то, чтоб вернуть участников и кол-во сообщений, не знаю зачем этот запрос может быть нужен, но пусть будет
+type GetUserOutput struct {
+	ID   uuid.UUID
+	Name string
+
+	MessageCount int
+	Participants []uuid.UUID
+
+	CreatedAt time.Time
 }
 
-// TODO: Наверное стоит немного урезать возвращаемый чатами контент
+func (qs *QueryService) HandleGetUserChat(ctx context.Context, qry *GetUserChatQry) (*dto.Chat, error) {
+	c, err := qs.chats.GetChat(ctx, qry.ChatID)
+	if err != nil {
+		return nil, fmt.Errorf("handleGetUserChat: %w", err)
+	}
+
+	if !slices.Contains(c.Participants, qry.UserID) {
+		return nil, ErrUserIsNotParticipant
+	}
+
+	return &dto.Chat{
+		ID:           c.ID,
+		Name:         c.Name,
+		MessageCount: c.MessageCount,
+		Participants: c.Participants,
+		CreatedAt:    c.CreatedAt,
+	}, nil
+}
+
+// NOTE: фактически, если запрашивать просто чаты, то наверное не нужно особо информация о кол-во сообщений в чате, а также о участниках
+type GetUserChatsOutput struct {
+	ID   uuid.UUID
+	Name string
+
+	LastMessageID        *int64
+	LastMessageSenderID  *uuid.UUID
+	LastMessageContent   *string
+	LastMessageCreatedAt *time.Time
+
+	LastReadMessageID *int64
+
+	CreatedAt time.Time
+}
+
 func (qs *QueryService) HandleGetUserChats(ctx context.Context, qry *GetUserChatsQry) ([]*dto.Chat, error) {
 	chats, err := qs.chats.GetUserChats(ctx, qry.UserID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("handleGetUserChats: %w", err)
 	}
 
 	chatIDs := make([]uuid.UUID, 0, len(chats))
@@ -40,7 +82,7 @@ func (qs *QueryService) HandleGetUserChats(ctx context.Context, qry *GetUserChat
 
 	unreadCountByChat, err := qs.messages.GetUnreadCount(ctx, qry.UserID, chatIDs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("handleGetUserChats: %w", err)
 	}
 
 	res := make([]*dto.Chat, 0, len(chats))

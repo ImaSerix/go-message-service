@@ -51,7 +51,8 @@ func main() {
 
 	autheMiddleware := auth.AutheMiddleware(usersRepository)
 	authoMiddleware := messageHandler.AuthoMiddleware(chatsRepository)
-	paramMiddleware := messageHandler.ParamMiddleware()
+	urlParamMiddleware := chatHandler.UrlParamMiddleware()
+	paramMiddleware := messageHandler.GetParamMiddleware()
 
 	usersHandler := userHandler.New(commandService)
 	chatsHandler := chatHandler.New(commandService, queryService)
@@ -71,17 +72,17 @@ func main() {
 		r.Get("/", chatsHandler.GetChats)
 		r.Post("/", chatsHandler.CreateChat)
 
-		r.Route("/{chatID}/messages", func(r chi.Router) {
-			r.Use(paramMiddleware)
+		r.Route("/{chatID}", func(r chi.Router) {
+			r.Use(urlParamMiddleware)
 			r.Use(authoMiddleware)
-			r.Get("/", messagesHandler.Get)
-			r.Post("/", messagesHandler.Send)
-		})
 
-		r.Route("/{chatID}/read", func(r chi.Router) {
-			r.Use(paramMiddleware)
-			r.Use(authoMiddleware)
-			r.Post("/", messagesHandler.Read)
+			r.Route("/messages", func(r chi.Router) {
+				r.Use(paramMiddleware)
+				r.Get("/", messagesHandler.Get)
+				r.Post("/", messagesHandler.Send)
+			})
+
+			r.Post("/read", messagesHandler.Read)
 		})
 	})
 

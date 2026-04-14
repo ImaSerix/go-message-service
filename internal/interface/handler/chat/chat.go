@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	appcmd "github.com/ImaSerix/go-message-service/internal/application/command"
+	"github.com/ImaSerix/go-message-service/internal/application/query"
 	appqry "github.com/ImaSerix/go-message-service/internal/application/query"
 	domainchat "github.com/ImaSerix/go-message-service/internal/domain/chat"
 	"github.com/ImaSerix/go-message-service/internal/interface/handler"
@@ -21,6 +22,42 @@ type ChatHandler struct {
 
 func New(cmd *appcmd.CommandService, qry *appqry.QueryService) *ChatHandler {
 	return &ChatHandler{cmd: cmd, qry: qry}
+}
+
+func (ch *ChatHandler) GetChat(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserID(r.Context())
+	if !ok {
+		slog.Error("reading user from context failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	chatID, ok := ChatID(r.Context())
+	if !ok {
+		slog.Error("reading chatID from context failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	c, err := ch.qry.HandleGetUserChat(r.Context(), &appqry.GetUserChatQry{UserID: userID, ChatID: chatID})
+	if err != nil {
+		if errors.Is(err, query.ErrUserIsNotParticipant) {
+			http.Error(w, "user is not participant", http.StatusForbidden)
+			return
+		}
+		handler.LogError(r, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(GetUserChatResponse{
+		ID:           c.ID,
+		Name:         c.Name,
+		MessageCount: c.MessageCount,
+		Participants: c.Participants,
+		CreatedAt:    c.CreatedAt,
+	})
 }
 
 func (ch *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
