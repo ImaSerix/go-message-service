@@ -143,7 +143,7 @@ func (qs *QueryService) HandleGetUserMessages(ctx context.Context, qry *GetUserM
 	newCursor := int64(messages[len(messages)-1].ID)
 
 	return &GetMessageOutput{
-		Messages:  toDTOList(messages),
+		Messages:  messages,
 		HasMore:   hasMore,
 		NewCursor: &newCursor,
 	}, nil

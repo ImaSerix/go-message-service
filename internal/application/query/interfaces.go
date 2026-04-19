@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
+	"github.com/ImaSerix/go-message-service/internal/dto"
 	"github.com/google/uuid"
 )
 
@@ -14,6 +15,6 @@ type ChatsQry interface {
 
 type MessagesQry interface {
 	GetUnreadCount(ctx context.Context, userID uuid.UUID, chatIDs []uuid.UUID) (map[uuid.UUID]int, error)
-	GetMessages(ctx context.Context, cursorID *int64, chatID uuid.UUID, direction domain.Direction, limit int) ([]*domain.Message, bool, error)
+	GetMessages(ctx context.Context, cursorID *int64, chatID uuid.UUID, direction domain.Direction, limit int) ([]*dto.Message, bool, error)
 	ExistsInChat(ctx context.Context, id int64, chatID uuid.UUID) (bool, error)
 }

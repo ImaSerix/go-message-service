@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ImaSerix/go-message-service/internal/domain"
+	"github.com/ImaSerix/go-message-service/internal/dto"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -56,7 +57,7 @@ func (q *MessageQry) GetUnreadCount(ctx context.Context, userID uuid.UUID, chatI
 }
 
 func (q *MessageQry) GetMessages(ctx context.Context, cursorID *int64, chatID uuid.UUID,
-	direction domain.Direction, limit int) ([]*domain.Message, bool, error) {
+	direction domain.Direction, limit int) ([]*dto.Message, bool, error) {
 	var query strings.Builder
 
 	query.WriteString("SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id = $1")
@@ -81,9 +82,9 @@ func (q *MessageQry) GetMessages(ctx context.Context, cursorID *int64, chatID uu
 	}
 	defer rows.Close()
 
-	messages := make([]*domain.Message, 0, limit+1)
+	messages := make([]*dto.Message, 0, limit+1)
 	for rows.Next() {
-		var message domain.Message
+		var message dto.Message
 		if err := rows.Scan(
 			&message.ID,
 			&message.ChatID,
