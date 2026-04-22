@@ -6,6 +6,7 @@ import (
 
 	appcmd "github.com/ImaSerix/go-message-service/internal/application/command"
 	appqry "github.com/ImaSerix/go-message-service/internal/application/query"
+	"github.com/ImaSerix/go-message-service/internal/asyncrunner"
 	"github.com/ImaSerix/go-message-service/internal/config"
 	"github.com/ImaSerix/go-message-service/internal/generator"
 	"github.com/ImaSerix/go-message-service/internal/interface/handler/auth"
@@ -39,6 +40,7 @@ func main() {
 
 	hub := wsHub.New(config.WSHub.ReadLimit, config.WSHub.PongWait, config.WSHub.PingPerion, config.WSHub.WriteWait)
 	idGenerator := generator.NewSnowflakeIDGenerator(config.IDGenerator.NodeID, config.IDGenerator.Epoch)
+	runner := asyncrunner.New()
 
 	commandService := appcmd.NewCommandService(
 		chatsRepository,
@@ -46,6 +48,7 @@ func main() {
 		usersRepository,
 		hub,
 		idGenerator,
+		runner,
 	)
 	queryService := appqry.NewQueryService(query.NewChatsQry(db), query.NewMessageQry(db), config.MaxMessagePageSize)
 

@@ -34,3 +34,7 @@ type Notifier interface {
 type IDGenerator interface {
 	NewID() message.SnowflakeID
 }
+
+type Runner interface {
+	Run(func())
+}

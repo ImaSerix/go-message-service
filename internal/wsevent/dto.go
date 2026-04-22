@@ -3,7 +3,6 @@ package wsevent
 import (
 	"time"
 
-	"github.com/ImaSerix/go-message-service/internal/domain/chat"
 	"github.com/google/uuid"
 )
 
@@ -16,7 +15,7 @@ type Message struct {
 }
 
 type Chat struct {
-	ID           uuid.UUID            `json:"id"`
-	Name         string               `json:"name"`
-	Participants []chat.ParticipantID `json:"participants"`
+	ID           uuid.UUID   `json:"id"`
+	Name         string      `json:"name"`
+	Participants []uuid.UUID `json:"participants"`
 }

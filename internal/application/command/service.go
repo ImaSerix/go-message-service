@@ -13,22 +13,24 @@ import (
 )
 
 // TODO: надо изменить, возврат команд в README, ибо фактически создание чата полностью дублируется в WS. Кароче привести к тому, что в коде
-
+// TODO: в будущем лучше убрать go в бизнесс логике, вероятно можно заменить на какой-то интерфейс, иначе тесты усложняются
 type CommandService struct {
 	chats     ChatsRepository
 	messages  MessagesRepository
 	users     UsersRepository
 	notifier  Notifier
 	generator IDGenerator
+	runner    Runner
 }
 
-func NewCommandService(chats ChatsRepository, messages MessagesRepository, users UsersRepository, notifier Notifier, generator IDGenerator) *CommandService {
+func NewCommandService(chats ChatsRepository, messages MessagesRepository, users UsersRepository, notifier Notifier, generator IDGenerator, runner Runner) *CommandService {
 	return &CommandService{
 		chats:     chats,
 		messages:  messages,
 		users:     users,
 		notifier:  notifier,
 		generator: generator,
+		runner:    runner,
 	}
 }
 
@@ -78,12 +80,14 @@ func (cs *CommandService) HandleCreateChat(ctx context.Context, cmd *CreateChatC
 		return uuid.Nil, fmt.Errorf("create chat: %w", err)
 	}
 
-	go cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewChat{
-		Chat: wsevent.Chat{
-			ID:           idConverter[chat.ChatID, uuid.UUID](c.ID()),
-			Name:         string(c.Name()),
-			Participants: c.Participants(),
-		},
+	cs.runner.Run(func() {
+		cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewChat{
+			Chat: wsevent.Chat{
+				ID:           idConverter[chat.ChatID, uuid.UUID](c.ID()),
+				Name:         string(c.Name()),
+				Participants: idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()),
+			},
+		})
 	})
 
 	return idConverter[chat.ChatID, uuid.UUID](c.ID()), nil
@@ -124,14 +128,17 @@ func (cs *CommandService) HandleCreateMessage(ctx context.Context, cmd *CreateMe
 	}
 
 	// TODO: лучше сделать какие-то конверторы, правда это сложно, так как фактически тогда об wsevent должны знать домены, что не хорошо
-	cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewMessage{
-		Message: wsevent.Message{
-			ID:        int64(m.ID()),
-			ChatID:    idConverter[message.ChatID, uuid.UUID](m.ChatID()),
-			SenderID:  idConverter[message.SenderID, uuid.UUID](m.SenderID()),
-			Content:   string(m.Content()),
-			CreatedAt: *m.CreatedAt(),
-		},
+
+	cs.runner.Run(func() {
+		cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewMessage{
+			Message: wsevent.Message{
+				ID:        int64(m.ID()),
+				ChatID:    idConverter[message.ChatID, uuid.UUID](m.ChatID()),
+				SenderID:  idConverter[message.SenderID, uuid.UUID](m.SenderID()),
+				Content:   string(m.Content()),
+				CreatedAt: *m.CreatedAt(),
+			},
+		})
 	})
 
 	return int64(m.ID()), nil
@@ -182,7 +189,7 @@ func (cs *CommandService) HandlerCreateUser(ctx context.Context, cmd *CreateUser
 		return uuid.Nil, err
 	}
 
-	u := user.NewUser(in.ID, in.Username)
+	u := user.NewUser(in.id, in.username)
 
 	u, err = cs.users.Create(ctx, u)
 	if err != nil {

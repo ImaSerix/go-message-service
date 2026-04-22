@@ -47,6 +47,9 @@ func TestUser(t *testing.T) {
 
 	u := user.NewUser(id, username)
 
+	if u == nil {
+		t.Fatal("user is nil")
+	}
 	if u.ID() != id {
 		t.Fatal("id mismatch")
 	}

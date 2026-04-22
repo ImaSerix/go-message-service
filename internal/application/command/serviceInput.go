@@ -74,8 +74,8 @@ func NewReadMessageInput(cmd *ReadMessageCmd) (*ReadMessageInput, error) {
 }
 
 type CreateUserInput struct {
-	ID       user.UserID
-	Username user.Username
+	id       user.UserID
+	username user.Username
 }
 
 func NewCreateUserInput(cmd *CreateUserCmd) (*CreateUserInput, error) {
@@ -94,7 +94,7 @@ func NewCreateUserInput(cmd *CreateUserCmd) (*CreateUserInput, error) {
 	}
 
 	return &CreateUserInput{
-		ID:       id,
-		Username: username,
+		id:       id,
+		username: username,
 	}, nil
 }
