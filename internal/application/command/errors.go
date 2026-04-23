@@ -13,6 +13,7 @@ var (
 	ErrNotFound         = errors.New("invalid command")
 	ErrChatNotExists    = errors.New("chat not exists")
 	ErrMessageNotInChat = errors.New("messsage not in chat")
+	UserAlreadyExists   = errors.New("user already exists")
 )
 
 type ErrUsersNotExist struct {

@@ -144,7 +144,7 @@ func (cs *CommandService) HandleCreateMessage(ctx context.Context, cmd *CreateMe
 	return int64(m.ID()), nil
 }
 
-func (cs *CommandService) MarkAsRead(ctx context.Context, cmd *ReadMessageCmd) error {
+func (cs *CommandService) HandleMarkAsRead(ctx context.Context, cmd *ReadMessageCmd) error {
 
 	in, err := NewReadMessageInput(cmd)
 	if err != nil {
@@ -172,6 +172,7 @@ func (cs *CommandService) MarkAsRead(ctx context.Context, cmd *ReadMessageCmd) e
 			return exists, nil
 		},
 	)
+
 	if err != nil {
 		return err
 	}
@@ -182,7 +183,7 @@ func (cs *CommandService) MarkAsRead(ctx context.Context, cmd *ReadMessageCmd) e
 	return nil
 }
 
-func (cs *CommandService) HandlerCreateUser(ctx context.Context, cmd *CreateUserCmd) (uuid.UUID, error) {
+func (cs *CommandService) HandleCreateUser(ctx context.Context, cmd *CreateUserCmd) (uuid.UUID, error) {
 
 	in, err := NewCreateUserInput(cmd)
 	if err != nil {
@@ -193,7 +194,10 @@ func (cs *CommandService) HandlerCreateUser(ctx context.Context, cmd *CreateUser
 
 	u, err = cs.users.Create(ctx, u)
 	if err != nil {
-		return uuid.Nil, err
+		if errors.Is(err, ErrAlreadyExists) {
+			return uuid.Nil, UserAlreadyExists
+		}
+		return uuid.Nil, fmt.Errorf("handleCreateUser: %w", err)
 	}
 
 	return idConverter[user.UserID, uuid.UUID](u.ID()), nil

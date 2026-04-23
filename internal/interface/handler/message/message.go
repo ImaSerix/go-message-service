@@ -158,7 +158,7 @@ func (mh *MessageHandler) Read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := mh.cmd.MarkAsRead(r.Context(), &appcmd.ReadMessageCmd{ChatID: chatID, CallerID: userID, MessageID: req.LastReadMessageID})
+	err := mh.cmd.HandleMarkAsRead(r.Context(), &appcmd.ReadMessageCmd{ChatID: chatID, CallerID: userID, MessageID: req.LastReadMessageID})
 	if err != nil {
 		switch {
 		case errors.Is(err, appcmd.ErrChatNotExists):

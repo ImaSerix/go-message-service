@@ -30,7 +30,7 @@ func (uh *UserHandler) SaveLocal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := uh.cmd.HandlerCreateUser(r.Context(), &appcmd.CreateUserCmd{UserID: &req.UserID, Username: req.Username})
+	_, err := uh.cmd.HandleCreateUser(r.Context(), &appcmd.CreateUserCmd{UserID: &req.UserID, Username: req.Username})
 	if err != nil {
 		switch {
 		case errors.Is(err, domainuser.ErrInvalidUsername):

@@ -310,7 +310,7 @@ func TestHandleCreateMessage_InvalidInput(t *testing.T) {
 	var cmd *command.CreateMessageCmd
 	newMessageID, err := cmdServ.HandleCreateMessage(t.Context(), cmd)
 	if !errors.Is(err, command.ErrInvalidCommand) {
-		t.Fatal("expected wrapped input error")
+		t.Fatal("expected input error")
 	}
 	if newMessageID != 0 {
 		t.Fatal("expected zero id")
@@ -537,5 +537,348 @@ func TestHandleCreateMessage_Success(t *testing.T) {
 	}
 	if fUsers.called {
 		t.Fatal("users called")
+	}
+}
+
+func TestHandleMarkAsRead_InvalidInput(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	var cmd *command.ReadMessageCmd
+	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
+	if !errors.Is(err, command.ErrInvalidCommand) {
+		t.Fatal("expected input error")
+	}
+	if fChats.called {
+		t.Fatal("chats called")
+	}
+	if fMessages.called {
+		t.Fatal("messages called")
+	}
+
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+	if fUsers.called {
+		t.Fatal("users called")
+	}
+}
+
+func TestHandleMarkAsRead_ChatNotExists(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	cmd := &command.ReadMessageCmd{
+		ChatID:    uuid.New(),
+		CallerID:  uuid.New(),
+		MessageID: 1001,
+	}
+	fChats.err = command.ErrNotFound
+	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
+	if !errors.Is(err, command.ErrChatNotExists) {
+		t.Fatal("expected ChatNotExists error")
+	}
+	if !fChats.called {
+		t.Fatal("chats not called")
+	}
+	if fMessages.called {
+		t.Fatal("messages called")
+	}
+
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+	if fUsers.called {
+		t.Fatal("users called")
+	}
+}
+
+func TestHandleMarkAsRead_DomainError(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	cmd := &command.ReadMessageCmd{
+		ChatID:    uuid.New(),
+		CallerID:  uuid.New(),
+		MessageID: 1001,
+	}
+	fChats.chat = chat.RehydrateChat(
+		chat.ChatID(cmd.ChatID),
+		chat.Name("nice name"),
+		[]chat.ParticipantID{
+			chat.ParticipantID(cmd.CallerID),
+			chat.ParticipantID(uuid.New()),
+		},
+		nil,
+		nil,
+	)
+	fMessages.existsInChat = false
+
+	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
+	if !errors.Is(err, chat.ErrMessageNotInChat) {
+		t.Fatal("expected MessageNotInChat error")
+	}
+	if !fChats.called {
+		t.Fatal("chats not called")
+	}
+	if !fMessages.called {
+		t.Fatal("messages not called")
+	}
+
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+	if fUsers.called {
+		t.Fatal("users called")
+	}
+}
+
+func TestHandleMarkAsRead_RepoError(t *testing.T) {
+	cmd := &command.ReadMessageCmd{
+		ChatID:    uuid.New(),
+		CallerID:  uuid.New(),
+		MessageID: 1001,
+	}
+
+	tests := func(
+		t *testing.T,
+		cmdServ *command.CommandService,
+		fChats *fakeChatsRepo,
+		fUsers *fakeUsersRepo,
+		fNotifier *fakeNotifier,
+		fGenerator *fakeIDGenerator,
+	) {
+		err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
+
+		if !strings.Contains(err.Error(), "markAsRead") {
+			t.Fatal("expected wrapped error, with 'markAsRead'")
+		}
+
+		if !fChats.called {
+			t.Fatal("chats not called")
+		}
+
+		if fGenerator.called {
+			t.Fatal("idGenerator called")
+		}
+		if fNotifier.called {
+			t.Fatal("notifier called")
+		}
+		if fUsers.called {
+			t.Fatal("users called")
+		}
+	}
+
+	t.Run("chat repo error", func(t *testing.T) {
+		cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+		fChats.err = errors.New("repo error")
+
+		tests(t, cmdServ, fChats, fUsers, fNotifier, fGenerator)
+		if fMessages.called {
+			t.Fatal("messages called")
+		}
+	})
+
+	t.Run("message repo error", func(t *testing.T) {
+		cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+		fMessages.err = errors.New("repo error")
+		fChats.chat = chat.RehydrateChat(
+			chat.ChatID(cmd.ChatID),
+			chat.Name("nice name"),
+			[]chat.ParticipantID{
+				chat.ParticipantID(cmd.CallerID),
+				chat.ParticipantID(uuid.New()),
+			},
+			nil,
+			nil,
+		)
+
+		tests(t, cmdServ, fChats, fUsers, fNotifier, fGenerator)
+		if !fMessages.called {
+			t.Fatal("messages not called")
+		}
+	})
+}
+
+func TestHandleMarkAsRead_Success(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	cmd := &command.ReadMessageCmd{
+		ChatID:    uuid.New(),
+		CallerID:  uuid.New(),
+		MessageID: 1001,
+	}
+	fChats.chat = chat.RehydrateChat(
+		chat.ChatID(cmd.ChatID),
+		chat.Name("nice name"),
+		[]chat.ParticipantID{
+			chat.ParticipantID(cmd.CallerID),
+			chat.ParticipantID(uuid.New()),
+		},
+		nil,
+		map[chat.ParticipantID]*chat.SnowflakeID{},
+	)
+	fMessages.existsInChat = true
+
+	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
+	if err != nil {
+		t.Fatal("expected nil error")
+	}
+	if !fChats.called {
+		t.Fatal("chats not called")
+	}
+	if !fMessages.called {
+		t.Fatal("messages not called")
+	}
+
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+	if fUsers.called {
+		t.Fatal("users called")
+	}
+}
+
+func TestHandleCreateUser_InvalidInput(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	var cmd *command.CreateUserCmd
+	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
+	if !errors.Is(err, command.ErrInvalidCommand) {
+		t.Fatal("expected InvalidCommand error")
+	}
+	if newUserID != uuid.Nil {
+		t.Fatal("expected uuid nil userID")
+	}
+	if fUsers.called {
+		t.Fatal("users called")
+	}
+
+	if fChats.called {
+		t.Fatal("chats called")
+	}
+	if fMessages.called {
+		t.Fatal("messages called")
+	}
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+}
+func TestHandleCreateUser_AlreadyExists(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	cmd := &command.CreateUserCmd{
+		Username: "nice username",
+	}
+	fUsers.err = command.ErrAlreadyExists
+
+	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
+	if !errors.Is(err, command.UserAlreadyExists) {
+		t.Fatal("expected UserAlreadyExists error")
+	}
+	if newUserID != uuid.Nil {
+		t.Fatal("expected uuid nil userID")
+	}
+	if !fUsers.called {
+		t.Fatal("users not called")
+	}
+
+	if fChats.called {
+		t.Fatal("chats called")
+	}
+	if fMessages.called {
+		t.Fatal("messages called")
+	}
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+}
+
+func TestHandleCreateUser_RepoError(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	cmd := &command.CreateUserCmd{
+		Username: "nice username",
+	}
+	fUsers.err = errors.New("repo error")
+
+	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
+	if !strings.Contains(err.Error(), "handleCreateUser") {
+		t.Fatal("expected handleCreateUser error")
+	}
+	if newUserID != uuid.Nil {
+		t.Fatal("expected uuid nil userID")
+	}
+	if !fUsers.called {
+		t.Fatal("users not called")
+	}
+
+	if fChats.called {
+		t.Fatal("chats called")
+	}
+	if fMessages.called {
+		t.Fatal("messages called")
+	}
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
+	}
+}
+
+func TestHandleCreateUser_Success(t *testing.T) {
+	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
+
+	userID := uuid.New()
+	cmd := &command.CreateUserCmd{
+		UserID:   &userID,
+		Username: "nice username",
+	}
+
+	fUsers.user = user.NewUser(
+		user.UserID(userID),
+		user.Username(cmd.Username),
+	)
+
+	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
+	if err != nil {
+		t.Fatal("expected nil error")
+	}
+	if newUserID != userID {
+		t.Fatal("id mismatch")
+	}
+	if !fUsers.called {
+		t.Fatal("users not called")
+	}
+
+	if fChats.called {
+		t.Fatal("chats called")
+	}
+	if fMessages.called {
+		t.Fatal("messages called")
+	}
+	if fGenerator.called {
+		t.Fatal("idGenerator called")
+	}
+	if fNotifier.called {
+		t.Fatal("notifier called")
 	}
 }
