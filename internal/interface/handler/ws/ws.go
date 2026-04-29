@@ -22,7 +22,6 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 
-	// TODO: Может быть надо ограничить, или упоменуть в Readme об этом
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},

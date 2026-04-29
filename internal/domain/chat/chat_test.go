@@ -1,6 +1,8 @@
 package chat_test
 
 import (
+	"errors"
+	"slices"
 	"testing"
 
 	"github.com/ImaSerix/go-message-service/internal/domain/chat"
@@ -29,17 +31,15 @@ func TestName(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			n, err := chat.NewName(test.chatName)
-			if err != test.expErr {
-				t.Fatalf("expected %v, got %v", test.expErr, err)
+			if !errors.Is(err, test.expErr) {
+				t.Fatalf("expected wrapped error %v, but got %v", test.expErr, err)
 			}
 			if string(n) != test.expChatName {
-				t.Fatalf("expected %s, got %s", test.expChatName, n)
+				t.Fatalf("expected chat name %s, but got %s", test.expChatName, n)
 			}
 		})
 	}
 }
-
-//TODO: Я всё таки считаю, что чат с "самим собой" можно будет
 
 func TestNewChat(t *testing.T) {
 
@@ -66,8 +66,8 @@ func TestNewChat(t *testing.T) {
 				participants = append(participants, chat.ParticipantID(p))
 			}
 			c, err := chat.NewChat(id, name, callerID, participants)
-			if err != test.expErr {
-				t.Fatalf("expected %v, got %v", test.expErr, err)
+			if !errors.Is(err, test.expErr) {
+				t.Fatalf("expected wrapped error %v, got %v", test.expErr, err)
 			}
 			if err != nil && c != nil {
 				t.Fatalf("got chat, but error occurred")
@@ -76,10 +76,13 @@ func TestNewChat(t *testing.T) {
 				t.Fatalf("got nil chat, but no error")
 			}
 			if c != nil && c.ID() != id {
-				t.Fatal("id mismatch")
+				t.Fatalf("expected id %s, but got %s", id, c.ID())
 			}
 			if c != nil && c.Name() != name {
-				t.Fatal("name mismatch")
+				t.Fatalf("expected name %s, but got %s", id, c.ID())
+			}
+			if c != nil && !slices.Equal(c.Participants(), participants) {
+				t.Fatalf("expected participants %v, but got %v", participants, c.Participants())
 			}
 		})
 	}
@@ -115,18 +118,19 @@ func TestSendMessage(t *testing.T) {
 		)
 
 		err := c.SendMessage(senderID, testMessage)
-		if err != test.expErr {
-			t.Fatalf("expected %v, got %v", test.expErr, err)
+		if !errors.Is(err, test.expErr) {
+			t.Fatalf("expected wrapped error %v, got %v", test.expErr, err)
 		}
 	}
 }
 
-func existsInChatMaker(exists bool) func(chat.SnowflakeID, chat.ChatID) (bool, error) {
+func existsInChatMaker(exists bool, err error) func(chat.SnowflakeID, chat.ChatID) (bool, error) {
 	return func(chat.SnowflakeID, chat.ChatID) (bool, error) {
-		return exists, nil
+		return exists, err
 	}
 }
 func TestReadMessage(t *testing.T) {
+	funcError := errors.New("func error")
 
 	type userType struct {
 		id                uuid.UUID
@@ -138,12 +142,13 @@ func TestReadMessage(t *testing.T) {
 
 	readerID := uuid.New()
 	tests := []struct {
-		name         string
-		user         userType
-		chat         chatType
-		readMessage  int64
-		existsInChat bool
-		expErr       error
+		name            string
+		user            userType
+		chat            chatType
+		readMessage     int64
+		existsInChat    bool
+		existsInChatErr error
+		expErr          error
 	}{
 		{
 			name: "success",
@@ -180,6 +185,18 @@ func TestReadMessage(t *testing.T) {
 			},
 			existsInChat: false,
 			expErr:       chat.ErrMessageNotInChat,
+		},
+		{
+			name: "exists in chat func error",
+			user: userType{
+				id:                readerID,
+				lastReadMessageID: 10001,
+			},
+			chat: chatType{
+				participants: []uuid.UUID{readerID, uuid.New()},
+			},
+			existsInChatErr: funcError,
+			expErr:          funcError,
 		},
 		{
 			name: "newer message read",
@@ -239,15 +256,15 @@ func TestReadMessage(t *testing.T) {
 
 		c := chat.RehydrateChat(chat.ChatID(uuid.New()), chat.Name("test"), participants, nil, lastReadedMessage)
 
-		err := c.ReadMessage(readerID, chat.SnowflakeID(test.readMessage), existsInChatMaker(test.existsInChat))
-		if err != test.expErr {
-			t.Fatalf("expected %v, got %v", test.expErr, err)
+		err := c.ReadMessage(readerID, chat.SnowflakeID(test.readMessage), existsInChatMaker(test.existsInChat, test.existsInChatErr))
+		if !errors.Is(err, test.expErr) {
+			t.Fatalf("expected wrapped error %v, got %v", test.expErr, err)
 		}
 		if id, _ := c.LastReadMessageID(readerID); err == nil && *id != chat.SnowflakeID(test.readMessage) {
-			t.Fatalf("lastReadMessage mismatch")
+			t.Fatalf("expected lastReadMessage id %d, but got %d", test.readMessage, *id)
 		}
 		if id, _ := c.LastReadMessageID(readerID); err != nil && *id != readMessageID {
-			t.Fatalf("readed message changed, when error")
+			t.Fatalf("expected readed message NOT change, when error occured, but it changed")
 		}
 	}
 }

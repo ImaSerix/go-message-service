@@ -13,8 +13,6 @@ func AuthoMiddleware(chats ChatsQry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-			// NOTE: Этот middleware ожидает, что было вызвоно middleware пользователей
-			// TODO: Также нужно бы по хорошему добавить описание и к этому middleware
 			userID, ok := auth.UserID(r.Context())
 			if !ok {
 				handler.LogError(r, errors.New("reading userID from context failed"))

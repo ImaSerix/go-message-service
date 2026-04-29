@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// TODO Скорее всего нужно уточнить, что как бы требуется вызывать middleware, которая будет как бы собирать url параметры
 func UrlParamMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -22,6 +21,7 @@ func UrlParamMiddleware() func(http.Handler) http.Handler {
 				ctx = WithChatID(ctx, chatID)
 			} else {
 				http.Error(w, "invalid chatID param", http.StatusBadRequest)
+				return
 			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))

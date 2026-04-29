@@ -21,7 +21,6 @@ type GetUserResponseLastMessage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// TODO: Тут тоже изменения
 type GetUserResponseChat struct {
 	ID          uuid.UUID                   `json:"id"`
 	Name        string                      `json:"name"`

@@ -3,11 +3,8 @@ package message
 import (
 	"net/http"
 	"strconv"
-
-	"github.com/ImaSerix/go-message-service/internal/interface/handler"
 )
 
-// TODO Скорее всего нужно уточнить, что как бы требуется вызывать middleware, которая будет как бы собирать параметры из запроса
 func GetParamMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -17,8 +14,6 @@ func GetParamMiddleware() func(http.Handler) http.Handler {
 			if beforeParam != "" {
 				before, err := strconv.ParseInt(beforeParam, 10, 64)
 				if err != nil {
-					// TODO: этот лог в целом можно удалить, просто во время продакшена мб нужен будет
-					handler.LogError(r, err)
 					http.Error(w, "invalid before param", http.StatusBadRequest)
 					return
 				}
@@ -29,8 +24,6 @@ func GetParamMiddleware() func(http.Handler) http.Handler {
 			if afterParam != "" {
 				after, err := strconv.ParseInt(afterParam, 10, 64)
 				if err != nil {
-					// TODO: этот лог в целом можно удалить, просто во время продакшена мб нужен будет
-					handler.LogError(r, err)
 					http.Error(w, "invalid after param", http.StatusBadRequest)
 					return
 				}
@@ -41,15 +34,12 @@ func GetParamMiddleware() func(http.Handler) http.Handler {
 			if limitParam != "" {
 				limit, err := strconv.ParseInt(limitParam, 10, strconv.IntSize)
 				if err != nil {
-					// TODO: этот лог в целом можно удалить, просто во время продакшена мб нужен будет
-					handler.LogError(r, err)
 					http.Error(w, "invalid limit param", http.StatusBadRequest)
 					return
 				}
 
 				ctx = WithLimitParam(ctx, int(limit))
 			} else {
-				// TODO: Может быть имеет смысл такое поведение дать именно usecase, и оставить middleawre выполнять только функцию чтения
 				ctx = WithLimitParam(ctx, 50)
 			}
 

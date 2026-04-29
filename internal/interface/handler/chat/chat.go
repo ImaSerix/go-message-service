@@ -86,7 +86,6 @@ func (ch *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
 				CreatedAt: *c.LastMessageCreatedAt,
 			}
 		}
-		// TODO: Тут рассинхрон с README
 		out.Chats = append(out.Chats, GetUserResponseChat{
 			ID:          c.ID,
 			Name:        c.Name,
@@ -96,7 +95,7 @@ func (ch *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(out)
+	json.NewEncoder(w).Encode(out)
 }
 
 func (ch *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
@@ -142,5 +141,5 @@ func (ch *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(CreateChatResponse{ID: id})
+	json.NewEncoder(w).Encode(CreateChatResponse{ID: id})
 }

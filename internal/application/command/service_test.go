@@ -22,25 +22,25 @@ func TestHandleCreateChat_InvalidInput(t *testing.T) {
 	var cmd *command.CreateChatCmd
 	newChatID, err := cmdServ.HandleCreateChat(t.Context(), cmd)
 	if !errors.Is(err, command.ErrInvalidCommand) {
-		t.Fatal("expected wrapped input error")
+		t.Fatalf("expected wrapped error %v, got %v", command.ErrInvalidCommand, err)
 	}
 	if newChatID != uuid.Nil {
-		t.Fatal("expected nil id")
+		t.Fatalf("expected uuid %s (nil), got %s", uuid.Nil, newChatID)
 	}
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("users notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected ID generator NOT to be called, but it was")
 	}
 }
 
@@ -56,25 +56,25 @@ func TestHandleCreateChat_DomainError(t *testing.T) {
 
 	newChatID, err := cmdServ.HandleCreateChat(t.Context(), &cmd)
 	if !errors.Is(err, chat.ErrCallerIsNotParticipant) {
-		t.Fatal("expected wrapped domain error")
+		t.Fatalf("expected wrapped error %v, got %v", chat.ErrCallerIsNotParticipant, err)
 	}
 	if newChatID != uuid.Nil {
-		t.Fatal("expected nil id")
-	}
-	if fChats.called {
-		t.Fatal("chats called")
-	}
-	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatalf("expected uuid %s (nil), got %s", uuid.Nil, newChatID)
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
+	}
+	if fChats.called {
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
+	}
+	if fMessages.called {
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected ID generator NOT to be called, but it was")
 	}
 }
 
@@ -114,31 +114,32 @@ func TestHandleCreateChat_MissingUser(t *testing.T) {
 
 			newChatID, err := cmdServ.HandleCreateChat(t.Context(), test.cmd)
 			if err == nil {
-				t.Fatal("expected error")
+				t.Fatal("expected non-nil error, but got nil")
+			}
+			typedError, ok := err.(*command.ErrUsersNotExist)
+			if !ok {
+				t.Fatal("expected error UserNotExists, but got something other")
+			}
+			if !slices.Equal(typedError.Users, test.expMissing) {
+				t.Fatalf("expected users missing %v, but got %v", test.expMissing, typedError.Users)
 			}
 			if newChatID != uuid.Nil {
-				t.Fatal("expected nil id")
-			}
-			if _, ok := err.(*command.ErrUsersNotExist); !ok {
-				t.Fatal("expected ErrUserNotExists error")
-			}
-			if typedError, ok := err.(*command.ErrUsersNotExist); ok && !slices.Equal(typedError.Users, test.expMissing) {
-				t.Fatal("missing mismatch")
+				t.Fatalf("expected uuid %s (nil), got %s", uuid.Nil, newChatID)
 			}
 			if !fUsers.called {
-				t.Fatal("users not called")
+				t.Fatal("expected users to be called, but it was not")
 			}
 			if fChats.called {
-				t.Fatal("chats called")
+				t.Fatal("expected chats NOT to be called, but it was")
 			}
 			if fNotifier.called {
-				t.Fatal("notifier called")
+				t.Fatal("expected notifier NOT to be called, but it was")
 			}
 			if fMessages.called {
-				t.Fatal("messages called")
+				t.Fatal("expected messages NOT to be called, but it was")
 			}
 			if fGenerator.called {
-				t.Fatal("idGenerator called")
+				t.Fatal("expected ID generator NOT to be called, but it was")
 			}
 		})
 	}
@@ -165,22 +166,22 @@ func TestHandleCreateChat_RepoError(t *testing.T) {
 		newChatID, err := cmdServ.HandleCreateChat(t.Context(), cmd)
 
 		if !strings.Contains(err.Error(), "create chat") {
-			t.Fatal("expected wrapped error, with 'create chat'")
+			t.Fatalf("expected wrapped error containing 'create chat', but got %v", err)
 		}
 		if newChatID != uuid.Nil {
-			t.Fatal("expected nil uuid")
+			t.Fatalf("expected uuid %s (nil), but got %s", uuid.Nil, newChatID)
 		}
 		if !fUsers.called {
-			t.Fatal("users not called")
+			t.Fatal("expected users NOT to be called, but it was")
 		}
 		if fNotifier.called {
-			t.Fatal("notifier called")
+			t.Fatal("expected notifier NOT to be called, but it was")
 		}
 		if fMessages.called {
-			t.Fatal("messages called")
+			t.Fatal("expected messages NOT to be called, but it was")
 		}
 		if fGenerator.called {
-			t.Fatal("idGenerator called")
+			t.Fatal("expected ID generator NOT to be called, but it was")
 		}
 	}
 
@@ -191,7 +192,7 @@ func TestHandleCreateChat_RepoError(t *testing.T) {
 
 		tests(t, cmdServ, fMessages, fUsers, fNotifier, fGenerator)
 		if fChats.called {
-			t.Fatal("chats called")
+			t.Fatal("expected chats NOT to be called, but it was")
 		}
 	})
 
@@ -202,7 +203,7 @@ func TestHandleCreateChat_RepoError(t *testing.T) {
 
 		tests(t, cmdServ, fMessages, fUsers, fNotifier, fGenerator)
 		if !fChats.called {
-			t.Fatal("chats not called")
+			t.Fatal("expected chats to be called, but it was not")
 		}
 	})
 
@@ -224,25 +225,25 @@ func TestHandleCreateChat_AlreadyExists(t *testing.T) {
 
 	newChatID, err := cmdServ.HandleCreateChat(t.Context(), cmd)
 	if !errors.Is(err, command.ErrAlreadyExists) {
-		t.Fatal("expected AlreadyExistsError")
+		t.Fatalf("expected wrapped error %v, but got %v", command.ErrAlreadyExists, err)
 	}
 	if newChatID != uuid.Nil {
-		t.Fatal("expected nil id")
+		t.Fatalf("expected uuid %s (nil), got %s", uuid.Nil, newChatID)
 	}
 	if !fUsers.called {
-		t.Fatal("users not called")
+		t.Fatal("expected users to be called, but it was not")
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats to be called, but it was not")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected ID generator NOT to be called, but it was")
 	}
 }
 
@@ -268,39 +269,38 @@ func TestHandleCreateChat_Success(t *testing.T) {
 
 	newChatID, err := cmdServ.HandleCreateChat(t.Context(), cmd)
 	if err != nil {
-		t.Fatal("expected no error")
+		t.Fatalf("expected nil error, but got %v", err)
 	}
 	if newChatID != uuid.UUID(fChats.chat.ID()) {
-		t.Fatal("id mismatch")
+		t.Fatalf("expected uuid %s, but got %s", fChats.chat.ID(), newChatID)
 	}
 	if !fUsers.called {
-		t.Fatal("users not called")
+		t.Fatal("expected users to be called, but it was not")
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats to be called, but it was not")
 	}
 	if !fNotifier.called {
-		t.Fatal("notifier not called")
+		t.Fatal("expected notifier to be called, but it was not")
 	}
-	if _, ok := fNotifier.event.(*wsevent.NewChat); !ok {
-		t.Fatal("expected NewChat event")
+	typedEvent, ok := fNotifier.event.(*wsevent.NewChat)
+	if !ok {
+		t.Fatal("expected notifier to get NewChat event, but it was not")
 	}
-	if typedEvent, ok := fNotifier.event.(*wsevent.NewChat); ok {
-		if typedEvent.Chat.ID != newChatID {
-			t.Fatal("chat id mismatch in event")
-		}
-		if typedEvent.Chat.Name != cmd.Name {
-			t.Fatal("name mismatch in event")
-		}
-		if !slices.Equal(typedEvent.Chat.Participants, cmd.Participants) {
-			t.Fatal("participants mismatch in event")
-		}
+	if typedEvent.Chat.ID != newChatID {
+		t.Fatalf("expected chat id %s, but got %s", newChatID, typedEvent.Chat.ID)
+	}
+	if typedEvent.Chat.Name != cmd.Name {
+		t.Fatalf("expected chat name %s, but got %s", cmd.Name, typedEvent.Chat.Name)
+	}
+	if !slices.Equal(typedEvent.Chat.Participants, cmd.Participants) {
+		t.Fatalf("expected participants %v, but got %v", cmd.Participants, typedEvent.Chat.Participants)
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected ID generator NOT to be called, but it was")
 	}
 }
 
@@ -310,25 +310,25 @@ func TestHandleCreateMessage_InvalidInput(t *testing.T) {
 	var cmd *command.CreateMessageCmd
 	newMessageID, err := cmdServ.HandleCreateMessage(t.Context(), cmd)
 	if !errors.Is(err, command.ErrInvalidCommand) {
-		t.Fatal("expected input error")
+		t.Fatalf("expected wrapped error %v, but got %v", command.ErrInvalidCommand, err)
 	}
 	if newMessageID != 0 {
-		t.Fatal("expected zero id")
+		t.Fatalf("expected zero id, but got %d", newMessageID)
 	}
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -344,25 +344,25 @@ func TestHandleCreateMessage_ChatNotExists(t *testing.T) {
 
 	newMessageID, err := cmdServ.HandleCreateMessage(t.Context(), cmd)
 	if !errors.Is(err, command.ErrChatNotExists) {
-		t.Fatal("expected NotFound error")
+		t.Fatalf("expected wrapped error %v, but got %v", command.ErrChatNotExists, err)
 	}
 	if newMessageID != 0 {
-		t.Fatal("expected zero id")
+		t.Fatalf("expected zero id, but got %d", newMessageID)
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -384,25 +384,25 @@ func TestHandleCreateMessage_DomainError(t *testing.T) {
 
 	newMessageID, err := cmdServ.HandleCreateMessage(t.Context(), cmd)
 	if !errors.Is(err, chat.ErrCallerIsNotParticipant) {
-		t.Fatal("expected domain error")
+		t.Fatalf("expected wrapped error %v, but got %v", chat.ErrCallerIsNotParticipant, err)
 	}
 	if newMessageID != 0 {
-		t.Fatal("expected zero id")
+		t.Fatalf("expected zero id, but got %d", newMessageID)
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if !fGenerator.called {
-		t.Fatal("idGenerator not called")
+		t.Fatal("expected id generator to be called, but it was not")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -424,19 +424,19 @@ func TestHandleCreateMessage_RepoError(t *testing.T) {
 		newMessageID, err := cmdServ.HandleCreateMessage(t.Context(), cmd)
 
 		if !strings.Contains(err.Error(), "handleCreateMessage") {
-			t.Fatal("expected wrapped error, with 'handleCreateMessage'")
+			t.Fatalf("expected wrapped error containing 'handleCreateMessage', but got %v", err)
 		}
 		if newMessageID != 0 {
-			t.Fatal("expected zero id")
+			t.Fatalf("expected zero id, but got %d", newMessageID)
 		}
 		if !fChats.called {
-			t.Fatal("chats not called")
+			t.Fatal("expected chats NOT to be called, but it was")
 		}
 		if fNotifier.called {
-			t.Fatal("notifier called")
+			t.Fatal("expected notifier NOT to be called, but it was")
 		}
 		if fUsers.called {
-			t.Fatal("users called")
+			t.Fatal("expected users NOT to be called, but it was")
 		}
 	}
 
@@ -447,10 +447,10 @@ func TestHandleCreateMessage_RepoError(t *testing.T) {
 
 		tests(t, cmdServ, fChats, fUsers, fNotifier)
 		if fGenerator.called {
-			t.Fatal("idGenerator called")
+			t.Fatal("expected id generator NOT to be called, but it was")
 		}
 		if fMessages.called {
-			t.Fatal("messages called")
+			t.Fatal("expected messages NOT to be called, but it was")
 		}
 	})
 
@@ -468,10 +468,10 @@ func TestHandleCreateMessage_RepoError(t *testing.T) {
 
 		tests(t, cmdServ, fChats, fUsers, fNotifier)
 		if !fGenerator.called {
-			t.Fatal("idGenerator not called")
+			t.Fatal("expected id generator to be called, but it was not")
 		}
 		if !fMessages.called {
-			t.Fatal("messages not called")
+			t.Fatal("expected messages to be called, but it was not")
 		}
 	})
 }
@@ -501,42 +501,42 @@ func TestHandleCreateMessage_Success(t *testing.T) {
 
 	newMessageID, err := cmdServ.HandleCreateMessage(t.Context(), cmd)
 	if err != nil {
-		t.Fatal("expected nil error")
+		t.Fatalf("expected nil error, but got %v", err)
 	}
 	if newMessageID == 0 {
-		t.Fatal("expected non zero id")
+		t.Fatal("expected non-zero id, but got zero")
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if !fGenerator.called {
-		t.Fatal("idGenerator not called")
+		t.Fatal("expected id generator to be called, but it was not")
 	}
 	if !fMessages.called {
-		t.Fatal("messages not called")
+		t.Fatal("expected messages to be called, but it was not")
 	}
 	if !fNotifier.called {
-		t.Fatal("notifier not called")
+		t.Fatal("expected notifier to be called, but it was not")
 	}
-	if _, ok := fNotifier.event.(*wsevent.NewMessage); !ok {
-		t.Fatal("expected NewChat event")
+	typedEvent, ok := fNotifier.event.(*wsevent.NewMessage)
+	if !ok {
+		t.Fatal("expected notifier to get NewMessage event, but it was not")
 	}
-	if typedEvent, ok := fNotifier.event.(*wsevent.NewMessage); ok {
-		if typedEvent.Message.ID != newMessageID {
-			t.Fatal("message id mismatch in event")
-		}
-		if typedEvent.Message.ChatID != cmd.ChatID {
-			t.Fatal("chat id mismatch in event")
-		}
-		if typedEvent.Message.Content != cmd.Content {
-			t.Fatal("content mismatch in event")
-		}
-		if typedEvent.Message.SenderID != cmd.SenderID {
-			t.Fatal("sender id mismatch in event")
-		}
+	if typedEvent.Message.ID != newMessageID {
+		t.Fatalf("expected message id %d, but got %d", newMessageID, typedEvent.Message.ID)
 	}
+	if typedEvent.Message.ChatID != cmd.ChatID {
+		t.Fatalf("expected chat id %s, but got %s", cmd.ChatID, typedEvent.Message.ChatID)
+	}
+	if typedEvent.Message.Content != cmd.Content {
+		t.Fatalf("expected content %s, but got %s", cmd.Content, typedEvent.Message.Content)
+	}
+	if typedEvent.Message.SenderID != cmd.SenderID {
+		t.Fatalf("expected sender id %s, but got %s", cmd.SenderID, typedEvent.Message.SenderID)
+	}
+
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -546,23 +546,23 @@ func TestHandleMarkAsRead_InvalidInput(t *testing.T) {
 	var cmd *command.ReadMessageCmd
 	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
 	if !errors.Is(err, command.ErrInvalidCommand) {
-		t.Fatal("expected input error")
+		t.Fatalf("expected wrapped error %v, but got %v", command.ErrInvalidCommand, err)
 	}
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -577,23 +577,23 @@ func TestHandleMarkAsRead_ChatNotExists(t *testing.T) {
 	fChats.err = command.ErrNotFound
 	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
 	if !errors.Is(err, command.ErrChatNotExists) {
-		t.Fatal("expected ChatNotExists error")
+		t.Fatalf("expected wrapped error %v, but got %v", command.ErrChatNotExists, err)
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -619,23 +619,23 @@ func TestHandleMarkAsRead_DomainError(t *testing.T) {
 
 	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
 	if !errors.Is(err, chat.ErrMessageNotInChat) {
-		t.Fatal("expected MessageNotInChat error")
+		t.Fatalf("expected wrapped error %v, but got %v", chat.ErrMessageNotInChat, err)
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if !fMessages.called {
-		t.Fatal("messages not called")
+		t.Fatal("expected messages to be called, but it was not")
 	}
 
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -657,21 +657,21 @@ func TestHandleMarkAsRead_RepoError(t *testing.T) {
 		err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
 
 		if !strings.Contains(err.Error(), "markAsRead") {
-			t.Fatal("expected wrapped error, with 'markAsRead'")
+			t.Fatalf("expected wrapped error containing 'markAsRead', but got %v", err)
 		}
 
 		if !fChats.called {
-			t.Fatal("chats not called")
+			t.Fatal("expected chats NOT to be called, but it was")
 		}
 
 		if fGenerator.called {
-			t.Fatal("idGenerator called")
+			t.Fatal("expected id generator NOT to be called, but it was")
 		}
 		if fNotifier.called {
-			t.Fatal("notifier called")
+			t.Fatal("expected notifier NOT to be called, but it was")
 		}
 		if fUsers.called {
-			t.Fatal("users called")
+			t.Fatal("expected users NOT to be called, but it was")
 		}
 	}
 
@@ -682,7 +682,7 @@ func TestHandleMarkAsRead_RepoError(t *testing.T) {
 
 		tests(t, cmdServ, fChats, fUsers, fNotifier, fGenerator)
 		if fMessages.called {
-			t.Fatal("messages called")
+			t.Fatal("expected messages NOT to be called, but it was")
 		}
 	})
 
@@ -703,7 +703,7 @@ func TestHandleMarkAsRead_RepoError(t *testing.T) {
 
 		tests(t, cmdServ, fChats, fUsers, fNotifier, fGenerator)
 		if !fMessages.called {
-			t.Fatal("messages not called")
+			t.Fatal("expected messages to be called, but it was not")
 		}
 	})
 }
@@ -730,23 +730,23 @@ func TestHandleMarkAsRead_Success(t *testing.T) {
 
 	err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
 	if err != nil {
-		t.Fatal("expected nil error")
+		t.Fatalf("expected nil error, but got %v", err)
 	}
 	if !fChats.called {
-		t.Fatal("chats not called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if !fMessages.called {
-		t.Fatal("messages not called")
+		t.Fatal("expected messages to be called, but it was not")
 	}
 
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 }
 
@@ -756,26 +756,26 @@ func TestHandleCreateUser_InvalidInput(t *testing.T) {
 	var cmd *command.CreateUserCmd
 	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
 	if !errors.Is(err, command.ErrInvalidCommand) {
-		t.Fatal("expected InvalidCommand error")
+		t.Fatalf("expected wrapped error %v, but got %v", command.ErrInvalidCommand, err)
 	}
 	if newUserID != uuid.Nil {
-		t.Fatal("expected uuid nil userID")
+		t.Fatalf("expected uuid %s (nil), but got %s", uuid.Nil, newUserID)
 	}
 	if fUsers.called {
-		t.Fatal("users called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 }
 func TestHandleCreateUser_AlreadyExists(t *testing.T) {
@@ -788,26 +788,26 @@ func TestHandleCreateUser_AlreadyExists(t *testing.T) {
 
 	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
 	if !errors.Is(err, command.UserAlreadyExists) {
-		t.Fatal("expected UserAlreadyExists error")
+		t.Fatalf("expected wrapped error %v, but got %s", command.UserAlreadyExists, err)
 	}
 	if newUserID != uuid.Nil {
-		t.Fatal("expected uuid nil userID")
+		t.Fatalf("expected uuid %s (nil), but got %s", uuid.Nil, newUserID)
 	}
 	if !fUsers.called {
-		t.Fatal("users not called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 }
 
@@ -821,26 +821,26 @@ func TestHandleCreateUser_RepoError(t *testing.T) {
 
 	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
 	if !strings.Contains(err.Error(), "handleCreateUser") {
-		t.Fatal("expected handleCreateUser error")
+		t.Fatalf("expected wrapped error containing 'handleCreateUser', but got %v", err)
 	}
 	if newUserID != uuid.Nil {
-		t.Fatal("expected uuid nil userID")
+		t.Fatalf("expected uuid %s (nil), but got %s", uuid.Nil, newUserID)
 	}
 	if !fUsers.called {
-		t.Fatal("users not called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 }
 
@@ -860,25 +860,25 @@ func TestHandleCreateUser_Success(t *testing.T) {
 
 	newUserID, err := cmdServ.HandleCreateUser(t.Context(), cmd)
 	if err != nil {
-		t.Fatal("expected nil error")
+		t.Fatalf("expected nil error, but got %v", err)
 	}
 	if newUserID != userID {
-		t.Fatal("id mismatch")
+		t.Fatalf("expected uuid %s, but got %s", userID, newUserID)
 	}
 	if !fUsers.called {
-		t.Fatal("users not called")
+		t.Fatal("expected users NOT to be called, but it was")
 	}
 
 	if fChats.called {
-		t.Fatal("chats called")
+		t.Fatal("expected chats NOT to be called, but it was")
 	}
 	if fMessages.called {
-		t.Fatal("messages called")
+		t.Fatal("expected messages NOT to be called, but it was")
 	}
 	if fGenerator.called {
-		t.Fatal("idGenerator called")
+		t.Fatal("expected id generator NOT to be called, but it was")
 	}
 	if fNotifier.called {
-		t.Fatal("notifier called")
+		t.Fatal("expected notifier NOT to be called, but it was")
 	}
 }

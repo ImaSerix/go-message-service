@@ -25,7 +25,6 @@ func AutheMiddleware(users UsersQry) func(http.Handler) http.Handler {
 				return
 			}
 
-			// TODO: возможно добавить немного описания к middleware в README
 			exists, err := users.Exists(r.Context(), userID)
 			if err != nil {
 				handler.LogError(r, err)

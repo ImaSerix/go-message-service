@@ -79,6 +79,8 @@ func main() {
 			r.Use(urlParamMiddleware)
 			r.Use(authoMiddleware)
 
+			r.Get("/", chatsHandler.GetChat)
+
 			r.Route("/messages", func(r chi.Router) {
 				r.Use(paramMiddleware)
 				r.Get("/", messagesHandler.Get)

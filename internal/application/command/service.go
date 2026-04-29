@@ -12,8 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// TODO: надо изменить, возврат команд в README, ибо фактически создание чата полностью дублируется в WS. Кароче привести к тому, что в коде
-// TODO: в будущем лучше убрать go в бизнесс логике, вероятно можно заменить на какой-то интерфейс, иначе тесты усложняются
 type CommandService struct {
 	chats     ChatsRepository
 	messages  MessagesRepository
@@ -126,8 +124,6 @@ func (cs *CommandService) HandleCreateMessage(ctx context.Context, cmd *CreateMe
 	if err != nil {
 		return 0, fmt.Errorf("handleCreateMessage: %w", err)
 	}
-
-	// TODO: лучше сделать какие-то конверторы, правда это сложно, так как фактически тогда об wsevent должны знать домены, что не хорошо
 
 	cs.runner.Run(func() {
 		cs.notifier.SendToUsers(idSliceConverter[chat.ParticipantID, uuid.UUID](c.Participants()), &wsevent.NewMessage{

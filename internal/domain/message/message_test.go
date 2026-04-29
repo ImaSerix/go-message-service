@@ -1,14 +1,20 @@
 package message_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ImaSerix/go-message-service/internal/domain/message"
 	"github.com/google/uuid"
 )
 
-// TODO: фактически не известно, что будет, если content слишком большой, по логике лучше щто ограничить, но наверное хватит на данный момент просто упоменуть это в readme, как уязвимость
 func TestContent(t *testing.T) {
+	var longContent strings.Builder
+
+	for i := 0; i < 1000; i++ {
+		longContent.WriteString("0123456789")
+	}
+	longContent.WriteByte('0')
 	tests := []struct {
 		name    string
 		content string
@@ -16,6 +22,7 @@ func TestContent(t *testing.T) {
 	}{
 		{name: "success", content: "nice content", expErr: nil},
 		{name: "empty content", content: "", expErr: message.ErrContentEmpty},
+		{name: "to long content", content: longContent.String(), expErr: message.ErrContentToLong},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -23,8 +30,11 @@ func TestContent(t *testing.T) {
 			if err != test.expErr {
 				t.Fatalf("expected %v, got %v", test.expErr, err)
 			}
-			if c != message.Content(test.content) {
-				t.Fatal("content mismatch")
+			if err == nil && c != message.Content(test.content) {
+				t.Fatalf("expected content %s, but got %s", test.content, c)
+			}
+			if err != nil && c != "" {
+				t.Fatalf("expected empty content, but got %s", c)
 			}
 		})
 	}

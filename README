@@ -76,9 +76,11 @@ Message history uses cursor-style pagination with Snowflake IDs:
 
 ## HTTP API
 
-## Internal endpoint
+### Internal endpoint
 
-### `POST /internal/users`
+---
+
+#### `POST /internal/users`
 Create a local user copy used by middleware authorization.
 
 Request:
@@ -93,7 +95,7 @@ Request:
 Constraints:
 
 - `user_id`: valid UUID
-- `username`: 4-32 characters
+- `username`: 2-32 characters
 
 Responses:
 
@@ -102,7 +104,9 @@ Responses:
 - `409`: user ID already exists
 - `500`: internal error
 
-## Protected endpoints
+### Protected endpoints
+
+---
 
 All routes below require header:
 
@@ -110,7 +114,7 @@ All routes below require header:
 X-User-ID: <uuid>
 ```
 
-### `POST /ws`
+#### `POST /ws`
 Upgrade HTTP connection to WebSocket for server push events.
 
 Responses:
@@ -119,11 +123,12 @@ Responses:
 - `401`: missing/invalid/not-local user header
 - `500`: internal error
 
-### `GET /chats`
+#### `GET /chats`
 Get all chats of current user.
 
-Response body:
+Responses:
 
+- `200`:
 ```json
 {
   "chats": [
@@ -131,23 +136,27 @@ Response body:
       "id": "uuid",
       "name": "string",
       "last_message": {
-        "id": 123,
+        "id": "snowflakeID",
         "sender_id": "uuid",
         "content": "string",
         "created_at": "timestamp"
       },
-      "unread_count": 0
-    }
+      "unread_count": "number"
+    },
+    {...},
+    {...},
   ]
 }
 ```
+- `401`: missing/invalid/not-local user header
+- `500`: internal error
 
 Notes:
 
 - `last_message` may be `null` for chats without messages.
 - If user has no chats, response is `{"chats":[]}`.
 
-### `POST /chats`
+#### `POST /chats`
 Create a new chat.
 
 Request:
@@ -162,18 +171,42 @@ Request:
 Constraints:
 
 - `name`: 2-32 characters
-- `participants`: valid UUID list
+- `participants`: valid UUID list (at least 1)
 - caller must include their own ID in participants
+
+Notes:
+
+- Is is possble to make chat with "yourself", chat where participant is only one.
 
 Responses:
 
 - `201`: `{"id":"uuid"}`
 - `400`: invalid body/name or non-existing participant(s)
+- `401`: missing/invalid/not-local user header
 - `403`: caller is not in participants
 - `409`: chat already exists
 - `500`: internal error
 
-### `GET /chats/{chatID}/messages?before=&after=&limit=`
+#### `GET /chats/{chatID}`
+Get extended (with participants) chat data by ID.
+
+Responses:
+
+- `200`:
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "message_count": "number",
+  "participants": "uuid list",
+  "created_at": "timestamp",
+}
+```
+- `401`: missing/invalid/not-local user header
+- `403`: user is not a chat participant
+- `500`: internal error
+
+#### `GET /chats/{chatID}/messages?before=&after=&limit=`
 Get chat messages with cursor pagination.
 
 Query params:
@@ -182,30 +215,33 @@ Query params:
 - `after`: int64 Snowflake ID
 - `limit`: int (default 50)
 
-Response body:
+Responses:
 
+- `200`: 
 ```json
 {
   "messages": [
     {
-      "id": 123,
+      "id": "snowflakeID",
       "sender_id": "uuid",
       "content": "string",
       "created_at": "timestamp"
-    }
+    },
+    {...},
+    {...},
   ],
-  "cursor_before": 120,
-  "cursor_after": 130
+  "cursor_before": "snowflakeID",
+  "cursor_after": "snowflakeID"
 }
 ```
-
-Responses:
-
-- `200`: success
 - `400`: invalid params / invalid limit / both before+after / message not in chat
 - `401`: missing/invalid local user
 - `403`: user is not a chat participant
 - `500`: internal error
+
+Notes:
+
+- messsages list is ordered by message id (ascending, older first).
 
 ### `POST /chats/{chatID}/messages`
 Send a new message into a chat.
@@ -224,7 +260,7 @@ Constraint:
 
 Responses:
 
-- `201`: `{"id":123}`
+- `201`: `{"id":"snowflakeID"}`
 - `400`: invalid body or invalid chat
 - `401`: missing/invalid local user
 - `403`: user is not a chat participant
@@ -237,7 +273,7 @@ Request:
 
 ```json
 {
-  "last_read_message_id": 123
+  "last_read_message_id": "snofflakeID"
 }
 ```
 
@@ -317,13 +353,14 @@ Sent when a new message appears in one of user chats.
 
 2. Create `.env` in project root:
 
+*.env example*
 ```bash
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=message_db
 DB_USER=message_user
 DB_PASSWORD=message_password
-DB_SSLMODE=disable
+DB_SSLMODE=disable 
 MAX_MESSAGE_PAGE_SIZE=100
 WS_READLIMIT=512
 WS_PONGWAIT=60s
