@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ImaSerix/go-message-service/internal/domain"
+	"github.com/ImaSerix/go-message-service/internal/domain/message"
 )
 
 type SnowflakeIDGenerator struct {
@@ -30,7 +30,7 @@ const (
 	nodeShift    = sequenceBits
 )
 
-func (gen *SnowflakeIDGenerator) NewID() domain.SnowflakeID {
+func (gen *SnowflakeIDGenerator) NewID() message.SnowflakeID {
 	gen.mutex.Lock()
 	defer gen.mutex.Unlock()
 
@@ -50,6 +50,6 @@ func (gen *SnowflakeIDGenerator) NewID() domain.SnowflakeID {
 		gen.lastTimestamp = timeStamp
 		id := (timeStamp << timeShift) | (gen.nodeID << nodeShift) | gen.sequence
 
-		return domain.SnowflakeID(id)
+		return message.SnowflakeID(id)
 	}
 }
