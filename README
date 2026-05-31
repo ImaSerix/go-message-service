@@ -1,0 +1,369 @@
+# go-message-service
+
+`go-message-service` is a learning/portfolio Go project for managing chats and messages between users.
+
+The main goal is to provide a reusable message service that can be integrated into other systems with minimal coupling.
+
+---
+
+## What this service does
+
+* Stores chat history
+* Creates and lists chats
+* Sends and reads messages
+* Streams updates in real time over WebSocket
+* Uses cursor-based pagination for message history
+
+---
+
+## Architecture overview
+
+Request flow:
+
+```
+HTTP handler → application service (use case) → repository → PostgreSQL
+```
+
+### Layers
+
+* **Handler layer**
+
+  * Parses and validates HTTP input
+  * Reads auth and URL/query data from middleware context
+  * Returns HTTP responses
+
+* **Application layer**
+
+  * Implements business rules for chat/message/user operations
+  * Coordinates repositories and WebSocket notifications
+
+* **Repository layer**
+
+  * Persists and queries data in PostgreSQL
+
+---
+
+## Communication model
+
+The service uses two channels:
+
+* **HTTP API** for commands and queries
+* **WebSocket** for server-side push events
+
+---
+
+## Auth and middleware model
+
+1. Create a local user via `POST /internal/users`
+2. Send `X-User-ID: <uuid>` header on protected endpoints
+3. Middleware checks:
+
+   * user exists locally
+   * user is participant in chat (for chat routes)
+
+If checks fail:
+
+* `401` — unauthorized
+* `403` — forbidden
+
+---
+
+## Pagination strategy
+
+Message history uses cursor-based pagination with Snowflake IDs:
+
+* `before=<id>` → older messages
+* `after=<id>` → newer messages
+* `limit=<n>` → page size
+
+`before` and `after` cannot be used together.
+
+---
+
+## HTTP API
+
+### Internal endpoint
+
+#### POST /internal/users
+
+Create a local user copy used for authorization.
+
+Request:
+
+```json
+{
+  "user_id": "uuid",
+  "username": "string"
+}
+```
+
+Constraints:
+
+* `user_id`: valid UUID
+* `username`: 2–32 characters
+
+Responses:
+
+* `201` user created
+* `400` invalid body
+* `409` user already exists
+* `500` internal error
+
+---
+
+### Protected endpoints
+
+All routes require:
+
+```
+X-User-ID: <uuid>
+```
+
+---
+
+#### POST /ws
+
+Upgrade to WebSocket connection.
+
+Responses:
+
+* `101` switching protocols
+* `401` unauthorized user
+* `500` internal error
+
+---
+
+#### GET /chats
+
+Returns all chats for current user.
+
+Response:
+
+```json
+{
+  "chats": [
+    {
+      "id": "uuid",
+      "name": "string",
+      "last_message": {
+        "id": "snowflakeID",
+        "sender_id": "uuid",
+        "content": "string",
+        "created_at": "timestamp"
+      },
+      "unread_count": 0
+    }
+  ]
+}
+```
+
+Notes:
+
+* `last_message` may be `null`
+* empty result → `{ "chats": [] }`
+
+---
+
+#### POST /chats
+
+Create a new chat.
+
+Request:
+
+```json
+{
+  "name": "string",
+  "participants": ["uuid"]
+}
+```
+
+Constraints:
+
+* `name`: 2–32 characters
+* `participants`: at least 1 UUID
+* caller must be included
+
+Responses:
+
+* `201` chat created
+* `400` invalid input
+* `401` unauthorized
+* `403` not a participant
+* `409` chat already exists
+
+---
+
+#### GET /chats/{chatID}
+
+Get chat details.
+
+Response:
+
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "message_count": 0,
+  "participants": ["uuid"],
+  "created_at": "timestamp"
+}
+```
+
+---
+
+#### GET /chats/{chatID}/messages
+
+Query params:
+
+* `before`
+* `after`
+* `limit`
+
+Response:
+
+```json
+{
+  "messages": [
+    {
+      "id": "snowflakeID",
+      "sender_id": "uuid",
+      "content": "string",
+      "created_at": "timestamp"
+    }
+  ],
+  "cursor_before": "snowflakeID",
+  "cursor_after": "snowflakeID"
+}
+```
+
+---
+
+#### POST /chats/{chatID}/messages
+
+Send message.
+
+Request:
+
+```json
+{
+  "content": "string"
+}
+```
+
+---
+
+#### POST /chats/{chatID}/read
+
+Mark messages as read.
+
+Request:
+
+```json
+{
+  "last_read_message_id": "snowflakeID"
+}
+```
+
+Response:
+
+* `204` success
+
+---
+
+## WebSocket events
+
+### Envelope
+
+```json
+{
+  "type": "event_name",
+  "data": {}
+}
+```
+
+### new_chat
+
+```json
+{
+  "type": "new_chat",
+  "data": {
+    "chat": {
+      "id": "uuid",
+      "name": "string",
+      "participants": ["uuid"]
+    }
+  }
+}
+```
+
+### new_message
+
+```json
+{
+  "type": "new_message",
+  "data": {
+    "message": {
+      "id": 123,
+      "chat_id": "uuid",
+      "sender_id": "uuid",
+      "content": "string",
+      "created_at": "timestamp"
+    }
+  }
+}
+```
+
+---
+
+## Known limitations
+
+* No full auth system (trusts `X-User-ID`)
+* Text-only messages
+* No per-message read status visibility
+* WebSocket allows all origins (dev-only)
+
+---
+
+## Running locally
+
+### 1. Setup DB
+
+Create PostgreSQL database.
+
+### 2. `.env`
+
+```bash
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=message_db
+DB_USER=message_user
+DB_PASSWORD=message_password
+DB_SSLMODE=disable
+
+MAX_MESSAGE_PAGE_SIZE=100
+WS_READLIMIT=512
+WS_PONGWAIT=60s
+WS_PINGPERIOD=54s
+WS_WRITEWAIT=10s
+
+IDGENERATOR_NODE_ID=0
+IDGENERATOR_EPOCH=1700000000
+```
+
+### 3. Run migrations
+
+```bash
+migrate -path ./migrations/postgres -database "postgres://message_user:message_password@localhost:5432/message_db?sslmode=disable" up
+```
+
+### 4. Start server
+
+```bash
+go run ./cmd/main.go
+```
+
+Server:
+
+```
+http://localhost:8080
+```
