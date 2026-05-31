@@ -8,11 +8,11 @@ The main goal is to provide a reusable message service that can be integrated in
 
 ## What this service does
 
-- Stores chat history.
-- Creates and lists chats.
-- Sends and reads messages.
-- Streams updates in real time over WebSocket.
-- Uses cursor-based pagination for message history.
+* Stores chat history
+* Creates and lists chats
+* Sends and reads messages
+* Streams updates in real time over WebSocket
+* Uses cursor-based pagination for message history
 
 ---
 
@@ -20,19 +20,26 @@ The main goal is to provide a reusable message service that can be integrated in
 
 Request flow:
 
-`HTTP handler -> application service (use case) -> repository -> PostgreSQL`
+```
+HTTP handler → application service (use case) → repository → PostgreSQL
+```
 
 ### Layers
 
-- **Handler layer**
-  - Parses and validates HTTP input.
-  - Reads auth and URL/query data from middleware context.
-  - Returns HTTP responses.
-- **Application layer**
-  - Implements business rules for chat/message/user operations.
-  - Coordinates repositories and WebSocket notifications.
-- **Repository layer**
-  - Persists and queries data in PostgreSQL.
+* **Handler layer**
+
+  * Parses and validates HTTP input
+  * Reads auth and URL/query data from middleware context
+  * Returns HTTP responses
+
+* **Application layer**
+
+  * Implements business rules for chat/message/user operations
+  * Coordinates repositories and WebSocket notifications
+
+* **Repository layer**
+
+  * Persists and queries data in PostgreSQL
 
 ---
 
@@ -40,37 +47,36 @@ Request flow:
 
 The service uses two channels:
 
-- **HTTP API** for commands and queries (create chat, send/read message, fetch chats/messages).
-- **WebSocket** for server-side push events (new chat, new message).
+* **HTTP API** for commands and queries
+* **WebSocket** for server-side push events
 
 ---
 
 ## Auth and middleware model
 
-The service uses lightweight local authorization:
-
-1. Create a local user record via `POST /internal/users`.
-2. Send `X-User-ID: <uuid>` header on protected endpoints.
+1. Create a local user via `POST /internal/users`
+2. Send `X-User-ID: <uuid>` header on protected endpoints
 3. Middleware checks:
-   - the user exists locally;
-   - for chat-scoped routes, the user is a participant of that chat.
+
+   * user exists locally
+   * user is participant in chat (for chat routes)
 
 If checks fail:
 
-- user-level check returns **401 Unauthorized**;
-- chat membership check returns **403 Forbidden**.
+* `401` — unauthorized
+* `403` — forbidden
 
 ---
 
 ## Pagination strategy
 
-Message history uses cursor-style pagination with Snowflake IDs:
+Message history uses cursor-based pagination with Snowflake IDs:
 
-- `before=<id>` -> older messages
-- `after=<id>` -> newer messages
-- `limit=<n>` -> page size
+* `before=<id>` → older messages
+* `after=<id>` → newer messages
+* `limit=<n>` → page size
 
-`before` and `after` cannot be used at the same time.
+`before` and `after` cannot be used together.
 
 ---
 
@@ -78,10 +84,9 @@ Message history uses cursor-style pagination with Snowflake IDs:
 
 ### Internal endpoint
 
----
+#### POST /internal/users
 
-#### `POST /internal/users`
-Create a local user copy used by middleware authorization.
+Create a local user copy used for authorization.
 
 Request:
 
@@ -94,41 +99,46 @@ Request:
 
 Constraints:
 
-- `user_id`: valid UUID
-- `username`: 2-32 characters
+* `user_id`: valid UUID
+* `username`: 2–32 characters
 
 Responses:
 
-- `201`: `"user created"`
-- `400`: invalid body/username
-- `409`: user ID already exists
-- `500`: internal error
-
-### Protected endpoints
+* `201` user created
+* `400` invalid body
+* `409` user already exists
+* `500` internal error
 
 ---
 
-All routes below require header:
+### Protected endpoints
 
-```http
+All routes require:
+
+```
 X-User-ID: <uuid>
 ```
 
-#### `POST /ws`
-Upgrade HTTP connection to WebSocket for server push events.
+---
+
+#### POST /ws
+
+Upgrade to WebSocket connection.
 
 Responses:
 
-- `101`: protocol switched
-- `401`: missing/invalid/not-local user header
-- `500`: internal error
+* `101` switching protocols
+* `401` unauthorized user
+* `500` internal error
 
-#### `GET /chats`
-Get all chats of current user.
+---
 
-Responses:
+#### GET /chats
 
-- `200`:
+Returns all chats for current user.
+
+Response:
+
 ```json
 {
   "chats": [
@@ -141,22 +151,21 @@ Responses:
         "content": "string",
         "created_at": "timestamp"
       },
-      "unread_count": "number"
-    },
-    {...},
-    {...},
+      "unread_count": 0
+    }
   ]
 }
 ```
-- `401`: missing/invalid/not-local user header
-- `500`: internal error
 
 Notes:
 
-- `last_message` may be `null` for chats without messages.
-- If user has no chats, response is `{"chats":[]}`.
+* `last_message` may be `null`
+* empty result → `{ "chats": [] }`
 
-#### `POST /chats`
+---
+
+#### POST /chats
+
 Create a new chat.
 
 Request:
@@ -170,54 +179,48 @@ Request:
 
 Constraints:
 
-- `name`: 2-32 characters
-- `participants`: valid UUID list (at least 1)
-- caller must include their own ID in participants
-
-Notes:
-
-- Is is possble to make chat with "yourself", chat where participant is only one.
+* `name`: 2–32 characters
+* `participants`: at least 1 UUID
+* caller must be included
 
 Responses:
 
-- `201`: `{"id":"uuid"}`
-- `400`: invalid body/name or non-existing participant(s)
-- `401`: missing/invalid/not-local user header
-- `403`: caller is not in participants
-- `409`: chat already exists
-- `500`: internal error
+* `201` chat created
+* `400` invalid input
+* `401` unauthorized
+* `403` not a participant
+* `409` chat already exists
 
-#### `GET /chats/{chatID}`
-Get extended (with participants) chat data by ID.
+---
 
-Responses:
+#### GET /chats/{chatID}
 
-- `200`:
+Get chat details.
+
+Response:
+
 ```json
 {
   "id": "uuid",
   "name": "string",
-  "message_count": "number",
-  "participants": "uuid list",
-  "created_at": "timestamp",
+  "message_count": 0,
+  "participants": ["uuid"],
+  "created_at": "timestamp"
 }
 ```
-- `401`: missing/invalid/not-local user header
-- `403`: user is not a chat participant
-- `500`: internal error
 
-#### `GET /chats/{chatID}/messages?before=&after=&limit=`
-Get chat messages with cursor pagination.
+---
+
+#### GET /chats/{chatID}/messages
 
 Query params:
 
-- `before`: int64 Snowflake ID
-- `after`: int64 Snowflake ID
-- `limit`: int (default 50)
+* `before`
+* `after`
+* `limit`
 
-Responses:
+Response:
 
-- `200`: 
 ```json
 {
   "messages": [
@@ -226,25 +229,18 @@ Responses:
       "sender_id": "uuid",
       "content": "string",
       "created_at": "timestamp"
-    },
-    {...},
-    {...},
+    }
   ],
   "cursor_before": "snowflakeID",
   "cursor_after": "snowflakeID"
 }
 ```
-- `400`: invalid params / invalid limit / both before+after / message not in chat
-- `401`: missing/invalid local user
-- `403`: user is not a chat participant
-- `500`: internal error
 
-Notes:
+---
 
-- messsages list is ordered by message id (ascending, older first).
+#### POST /chats/{chatID}/messages
 
-### `POST /chats/{chatID}/messages`
-Send a new message into a chat.
+Send message.
 
 Request:
 
@@ -254,44 +250,29 @@ Request:
 }
 ```
 
-Constraint:
+---
 
-- `content`: max 10,000 characters
+#### POST /chats/{chatID}/read
 
-Responses:
-
-- `201`: `{"id":"snowflakeID"}`
-- `400`: invalid body or invalid chat
-- `401`: missing/invalid local user
-- `403`: user is not a chat participant
-- `500`: internal error
-
-### `POST /chats/{chatID}/read`
-Mark messages as read up to (and including) a message ID.
+Mark messages as read.
 
 Request:
 
 ```json
 {
-  "last_read_message_id": "snofflakeID"
+  "last_read_message_id": "snowflakeID"
 }
 ```
 
-Responses:
+Response:
 
-- `204`: marked as read
-- `400`: invalid body / invalid chat / message not in chat
-- `401`: missing/invalid local user
-- `403`: user is not a chat participant
-- `500`: internal error
+* `204` success
 
 ---
 
 ## WebSocket events
 
-Only the server sends events. Client messages are ignored.
-
-Envelope format:
+### Envelope
 
 ```json
 {
@@ -300,9 +281,7 @@ Envelope format:
 }
 ```
 
-### `new_chat`
-
-Sent when a new chat is created and user is a participant.
+### new_chat
 
 ```json
 {
@@ -317,9 +296,7 @@ Sent when a new chat is created and user is a participant.
 }
 ```
 
-### `new_message`
-
-Sent when a new message appears in one of user chats.
+### new_message
 
 ```json
 {
@@ -340,50 +317,53 @@ Sent when a new message appears in one of user chats.
 
 ## Known limitations
 
-- No full authentication system (service trusts provided `X-User-ID` after local existence check).
-- Text messages only (no attachments/media).
-- No per-message read-status visibility for other participants.
-- WebSocket upgrader currently accepts all origins (`CheckOrigin: true`) and should be restricted for production.
+* No full auth system (trusts `X-User-ID`)
+* Text-only messages
+* No per-message read status visibility
+* WebSocket allows all origins (dev-only)
 
 ---
 
 ## Running locally
 
-1. Prepare PostgreSQL and create DB/user.
+### 1. Setup DB
 
-2. Create `.env` in project root:
+Create PostgreSQL database.
 
-*.env example*
+### 2. `.env`
+
 ```bash
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=message_db
 DB_USER=message_user
 DB_PASSWORD=message_password
-DB_SSLMODE=disable 
+DB_SSLMODE=disable
+
 MAX_MESSAGE_PAGE_SIZE=100
 WS_READLIMIT=512
 WS_PONGWAIT=60s
 WS_PINGPERIOD=54s
 WS_WRITEWAIT=10s
+
 IDGENERATOR_NODE_ID=0
 IDGENERATOR_EPOCH=1700000000
 ```
 
-3. Run migrations:
+### 3. Run migrations
 
 ```bash
 migrate -path ./migrations/postgres -database "postgres://message_user:message_password@localhost:5432/message_db?sslmode=disable" up
 ```
 
-4. Start the server:
+### 4. Start server
 
 ```bash
 go run ./cmd/main.go
 ```
 
-Server URL:
+Server:
 
-```text
+```
 http://localhost:8080
 ```
