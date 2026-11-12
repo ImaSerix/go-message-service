@@ -367,3 +367,36 @@ Server:
 ```
 http://localhost:8080
 ```
+
+---
+
+## Running in Docker
+
+Everything is built from the `Dockerfile` in the repository root. It has two targets.
+
+### Service image
+
+```bash
+docker build -t message-service .
+```
+
+The image runs the service as the unprivileged user `message`. There is no `.env` in the image: all configuration comes from environment variables (the same names as in the `.env` example above). `DB_HOST` must point to a reachable PostgreSQL, and `DB_USER` should be the application role (data access only, no schema changes).
+
+```bash
+docker run --rm -p 8080:8080 --env-file message.env message-service
+```
+
+`message.env` is a local file with the variables from the `.env` example; do not commit it.
+
+### Migrations image
+
+```bash
+docker build --target migrate -t message-migrate .
+```
+
+The image holds the `migrations/postgres` directory and runs `migrate` as a one-shot container. Pass the connection URL of the migrator role (the owner of the database and schema) at run time:
+
+```bash
+docker run --rm --network <network> message-migrate \
+  -database "postgres://<migrator>:<password>@<host>:5432/message_db?sslmode=disable" up
+```
