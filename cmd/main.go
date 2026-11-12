@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -24,7 +26,7 @@ import (
 
 func main() {
 	err := godotenv.Load()
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		log.Fatal("Error loading .env file")
 	}
 
