@@ -75,12 +75,10 @@ func (r *MessagesRepository) UpdateLastReaded(ctx context.Context, readerID chat
 	}
 
 	var updated int
-	err := r.db.QueryRowContext(ctx, `UPDATE chat_users SET last_read_message_id = $1 WHERE user_id = $2 and chat_id = $3 and (last_read_message_id IS NULL or last_read_message_id < $1) RETURNING 1`, int64(*lastReadedID), uuid.UUID(readerID), uuid.UUID(c.ID())).Scan(&updated)
+	// A concurrent request may have already stored a newer mark: the greater one is kept, the mark never goes back.
+	// GREATEST ignores NULL, so the first mark is stored as is. A missing participant row is still an error.
+	err := r.db.QueryRowContext(ctx, `UPDATE chat_users SET last_read_message_id = GREATEST(last_read_message_id, $1) WHERE user_id = $2 and chat_id = $3 RETURNING 1`, int64(*lastReadedID), uuid.UUID(readerID), uuid.UUID(c.ID())).Scan(&updated)
 	if err != nil {
-		// A concurrent request has already stored the same or a newer mark: the mark never goes back.
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
 		return fmt.Errorf("messages updateLastReaded: %w", err)
 	}
 	if updated != 1 {

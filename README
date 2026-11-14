@@ -242,6 +242,13 @@ Response:
 
 `messages` are ordered from older to newer in all three cases: without a cursor (the last `limit` messages), with `before` and with `after`.
 
+Cursors in the response:
+
+* `cursor_before` repeats the cursor of the request (the value of `before` or `after`); `null` when the request has no cursor
+* `cursor_after` is the ID of the last message of the page, that is the newest one; `null` when the page is empty
+
+For a page without a cursor `cursor_after` is therefore the newest message of the chat: `after=<cursor_after>` returns only messages that appeared later. To get the older neighbour page, pass the ID of the first message of the page as `before`.
+
 ---
 
 #### POST /chats/{chatID}/messages
@@ -391,7 +398,7 @@ Without `TEST_DATABASE_URL` the tests that need a database are skipped.
 
 ### Tests with a real PostgreSQL
 
-`cmd/main_test.go` runs the main HTTP scenario (users, chat, repeated participants, messages, chat list, history order, mark as read and its refusals) against a real PostgreSQL. It also calls the message repository directly to check that an older read mark and an older last message do not replace newer ones; this check is sequential, a real race is not reproduced.
+`cmd/main_test.go` runs the main HTTP scenario (users, chat, repeated participants, messages, chat list, history order, cursors and neighbour pages, mark as read and its refusals) against a real PostgreSQL. It also calls the message repository directly to check that an older read mark and an older last message do not replace newer ones, and that a read mark without a participant row is an error; this check is sequential, a real race is not reproduced.
 
 1. Create a separate test database. Its name must end with `_test`, otherwise the tests refuse to run. The tests empty all tables before the scenario, so never point them at a database with real data.
 2. Apply the migrations to it:

@@ -79,7 +79,8 @@ func TestDatabaseGuard(t *testing.T) {
 }
 
 // do sends a request to the router and decodes a JSON response body into out, if out is not nil.
-func do(t *testing.T, router http.Handler, method, path, userID, body string, wantStatus int, out any) {
+// It returns the response body as text.
+func do(t *testing.T, router http.Handler, method, path, userID, body string, wantStatus int, out any) string {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if userID != "" {
@@ -91,11 +92,12 @@ func do(t *testing.T, router http.Handler, method, path, userID, body string, wa
 		t.Fatalf("%s %s: status = %d, body = %q; want %d", method, path, rec.Code, rec.Body.String(), wantStatus)
 	}
 	if out == nil {
-		return
+		return rec.Body.String()
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), out); err != nil {
 		t.Fatalf("%s %s: decode body %q: %v", method, path, rec.Body.String(), err)
 	}
+	return rec.Body.String()
 }
 
 type chatsResponse struct {
@@ -103,9 +105,10 @@ type chatsResponse struct {
 		ID          uuid.UUID `json:"id"`
 		Name        string    `json:"name"`
 		LastMessage *struct {
-			ID       int64     `json:"id"`
-			SenderID uuid.UUID `json:"sender_id"`
-			Content  string    `json:"content"`
+			ID        int64     `json:"id"`
+			SenderID  uuid.UUID `json:"sender_id"`
+			Content   string    `json:"content"`
+			CreatedAt time.Time `json:"created_at"`
 		} `json:"last_message"`
 		UnreadCount int `json:"unread_count"`
 	} `json:"chats"`
@@ -146,6 +149,12 @@ func TestChatScenario(t *testing.T) {
 	// A participant that does not exist in Message is rejected.
 	do(t, router, http.MethodPost, "/chats", alice, fmt.Sprintf(`{"name":"chat","participants":[%q,%q]}`, alice, stranger), http.StatusBadRequest, nil)
 
+	// A repeated participant that does not exist is listed once.
+	body := do(t, router, http.MethodPost, "/chats", alice, fmt.Sprintf(`{"name":"chat","participants":[%q,%q,%q]}`, alice, stranger, stranger), http.StatusBadRequest, nil)
+	if want := fmt.Sprintf("not existing participants %v\n", [][16]byte{uuid.MustParse(stranger)}); body != want {
+		t.Fatalf("repeated missing participant: body = %q; want %q", body, want)
+	}
+
 	// The caller must be one of the participants.
 	do(t, router, http.MethodPost, "/chats", alice, fmt.Sprintf(`{"name":"chat","participants":[%q]}`, bob), http.StatusForbidden, nil)
 
@@ -170,10 +179,12 @@ func TestChatScenario(t *testing.T) {
 			SenderID uuid.UUID `json:"sender_id"`
 			Content  string    `json:"content"`
 		} `json:"messages"`
+		CursorBefore *int64 `json:"cursor_before"`
+		CursorAfter  *int64 `json:"cursor_after"`
 	}
 	do(t, router, http.MethodGet, chatPath+"/messages", bob, "", http.StatusOK, &history)
-	if len(history.Messages) != 0 {
-		t.Fatalf("history before message = %d; want 0", len(history.Messages))
+	if len(history.Messages) != 0 || history.CursorBefore != nil || history.CursorAfter != nil {
+		t.Fatalf("history before message = %+v; want no messages and no cursors", history)
 	}
 
 	// Only participants have access to the chat.
@@ -268,6 +279,42 @@ func TestChatScenario(t *testing.T) {
 	}
 	do(t, router, http.MethodGet, chatPath+"/messages?after=1", bob, "", http.StatusBadRequest, nil)
 
+	// Cursors: cursor_before repeats the cursor of the request, cursor_after is the last (newest) message of the page.
+	if got := historyIDs("?limit=2"); !slices.Equal(got, []int64{second.ID, third.ID}) || history.CursorBefore != nil || history.CursorAfter == nil || *history.CursorAfter != third.ID {
+		t.Fatalf("last page = %+v; want messages %d, %d, no cursor_before, cursor_after %d", history, second.ID, third.ID, third.ID)
+	}
+	// Older neighbour page: before the first message of the page.
+	if got := historyIDs(fmt.Sprintf("?before=%d&limit=2", history.Messages[0].ID)); !slices.Equal(got, []int64{first.ID}) || history.CursorBefore == nil || *history.CursorBefore != second.ID || history.CursorAfter == nil || *history.CursorAfter != first.ID {
+		t.Fatalf("page before %d = %+v; want message %d, cursor_before %d, cursor_after %d", second.ID, history, first.ID, second.ID, first.ID)
+	}
+	// Newer neighbour pages: after cursor_after of the previous page, up to an empty page.
+	walked := []int64{}
+	params := "?limit=1"
+	for range 4 {
+		ids := historyIDs(params)
+		if len(ids) == 0 {
+			break
+		}
+		walked = append(walked, ids...)
+		params = fmt.Sprintf("?after=%d&limit=1", *history.CursorAfter)
+	}
+	if !slices.Equal(walked, []int64{third.ID}) || history.CursorAfter != nil || history.CursorBefore == nil || *history.CursorBefore != third.ID {
+		t.Fatalf("pages after the last page = %v, last response %+v; want only message %d, then an empty page without cursor_after", walked, history, third.ID)
+	}
+	walked = []int64{}
+	params = fmt.Sprintf("?after=%d&limit=1", first.ID)
+	for range 4 {
+		ids := historyIDs(params)
+		if len(ids) == 0 {
+			break
+		}
+		walked = append(walked, ids...)
+		params = fmt.Sprintf("?after=%d&limit=1", *history.CursorAfter)
+	}
+	if !slices.Equal(walked, []int64{second.ID, third.ID}) {
+		t.Fatalf("pages after %d = %v; want %d, %d", first.ID, walked, second.ID, third.ID)
+	}
+
 	// Mark as read.
 	lastRead := func() int64 {
 		t.Helper()
@@ -302,8 +349,20 @@ func TestChatScenario(t *testing.T) {
 	}
 
 	// A message that is not in this chat is rejected.
-	do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, foreign.ID), http.StatusBadRequest, nil)
+	body = do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, foreign.ID), http.StatusBadRequest, nil)
+	if want := fmt.Sprintf("no message %d in chat %v\n", foreign.ID, created.ID); body != want {
+		t.Fatalf("read of a foreign message: body = %q; want %q", body, want)
+	}
 	do(t, router, http.MethodPost, chatPath+"/read", bob, `{"last_read_message_id":1}`, http.StatusBadRequest, nil)
+	// Also for a participant of both chats.
+	body = do(t, router, http.MethodPost, chatPath+"/read", alice, fmt.Sprintf(`{"last_read_message_id":%d}`, foreign.ID), http.StatusBadRequest, nil)
+	if want := fmt.Sprintf("no message %d in chat %v\n", foreign.ID, created.ID); body != want {
+		t.Fatalf("read of a message from another chat of the same user: body = %q; want %q", body, want)
+	}
+	var aliceMark sql.NullInt64
+	if err := db.QueryRow(`SELECT last_read_message_id FROM chat_users WHERE chat_id = $1 AND user_id = $2`, created.ID, alice).Scan(&aliceMark); err != nil || aliceMark.Valid {
+		t.Fatalf("mark of %s after rejected read = %+v, err = %v; want no mark", alice, aliceMark, err)
+	}
 	if lastRead() != third.ID {
 		t.Fatalf("mark after rejected read = %d; want %d", lastRead(), third.ID)
 	}
@@ -321,13 +380,38 @@ func TestChatScenario(t *testing.T) {
 		t.Fatalf("mark after stale update = %d; want %d", lastRead(), third.ID)
 	}
 
-	late := message.NewMessage(message.SnowflakeID(first.ID-1), message.ChatID(created.ID), message.SenderID(uuid.MustParse(alice)), message.Content("late"))
-	if _, err := messages.Create(t.Context(), late); err != nil {
+	// A mark for a missing participant row or a missing chat is still an error.
+	outsider := chat.ParticipantID(uuid.MustParse(stranger))
+	outsiderChat := chat.RehydrateChat(chat.ChatID(created.ID), chat.Name("chat"), []chat.ParticipantID{outsider}, nil, map[chat.ParticipantID]*chat.SnowflakeID{outsider: &stale})
+	if err := messages.UpdateLastReaded(t.Context(), outsider, outsiderChat); err == nil {
+		t.Fatal("read mark of a user without a participant row: got nil error")
+	}
+	missingChat := chat.RehydrateChat(chat.ChatID(uuid.New()), chat.Name("chat"), []chat.ParticipantID{reader}, nil, map[chat.ParticipantID]*chat.SnowflakeID{reader: &stale})
+	if err := messages.UpdateLastReaded(t.Context(), reader, missingChat); err == nil {
+		t.Fatal("read mark in a missing chat: got nil error")
+	}
+	var marks int
+	if err := db.QueryRow(`SELECT count(*) FROM chat_users WHERE last_read_message_id IS NOT NULL`).Scan(&marks); err != nil || marks != 1 || lastRead() != third.ID {
+		t.Fatalf("read marks after rejected updates = %d, mark of %s = %d, err = %v; want one mark %d", marks, bob, lastRead(), err, third.ID)
+	}
+
+	// The older message has another sender and a later creation time, so each of the four fields would show a rollback.
+	do(t, router, http.MethodGet, "/chats", bob, "", http.StatusOK, &chats)
+	last := *chats.Chats[0].LastMessage
+	if last.ID != third.ID || last.SenderID.String() != alice || last.Content != "again" || last.CreatedAt.IsZero() {
+		t.Fatalf("last message = %+v; want id %d from %s with creation time", last, third.ID, alice)
+	}
+	late := message.NewMessage(message.SnowflakeID(first.ID-1), message.ChatID(created.ID), message.SenderID(uuid.MustParse(bob)), message.Content("late"))
+	late, err := messages.Create(t.Context(), late)
+	if err != nil {
 		t.Fatalf("message with an older id: %v", err)
 	}
+	if late.CreatedAt().Equal(last.CreatedAt) {
+		t.Fatalf("older message has the creation time of the last one: %v", last.CreatedAt)
+	}
 	do(t, router, http.MethodGet, "/chats", bob, "", http.StatusOK, &chats)
-	if c := chats.Chats[0]; c.LastMessage == nil || c.LastMessage.ID != third.ID || c.LastMessage.SenderID.String() != alice || c.LastMessage.Content != "again" {
-		t.Fatalf("last message after an older one = %+v; want id %d", c.LastMessage, third.ID)
+	if c := chats.Chats[0]; c.LastMessage == nil || c.LastMessage.ID != last.ID || c.LastMessage.SenderID != last.SenderID || c.LastMessage.Content != last.Content || !c.LastMessage.CreatedAt.Equal(last.CreatedAt) {
+		t.Fatalf("last message after an older one = %+v; want unchanged %+v", c.LastMessage, last)
 	}
 	do(t, router, http.MethodGet, chatPath, bob, "", http.StatusOK, &details)
 	if details.MessageCount != 4 {
