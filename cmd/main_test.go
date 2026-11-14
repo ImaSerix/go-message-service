@@ -8,11 +8,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ImaSerix/go-message-service/internal/config"
+	"github.com/ImaSerix/go-message-service/internal/domain/chat"
+	"github.com/ImaSerix/go-message-service/internal/domain/message"
+	"github.com/ImaSerix/go-message-service/internal/repository/postgres/command"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -178,14 +182,36 @@ func TestChatScenario(t *testing.T) {
 	do(t, router, http.MethodGet, chatPath, stranger, "", http.StatusForbidden, nil)
 	do(t, router, http.MethodGet, "/chats/"+uuid.NewString(), alice, "", http.StatusForbidden, nil)
 
+	// Repeated participants are removed silently.
+	var details struct {
+		ID           uuid.UUID   `json:"id"`
+		Name         string      `json:"name"`
+		MessageCount int         `json:"message_count"`
+		Participants []uuid.UUID `json:"participants"`
+	}
+	var other struct {
+		ID uuid.UUID `json:"id"`
+	}
+	do(t, router, http.MethodPost, "/chats", alice, fmt.Sprintf(`{"name":"other","participants":[%q,%q,%q,%q]}`, alice, stranger, alice, stranger), http.StatusCreated, &other)
+	otherPath := "/chats/" + other.ID.String()
+	do(t, router, http.MethodGet, otherPath, alice, "", http.StatusOK, &details)
+	if got, want := sortedIDs(details.Participants), sortedIDs([]uuid.UUID{uuid.MustParse(alice), uuid.MustParse(stranger)}); !slices.Equal(got, want) {
+		t.Fatalf("participants of chat with repeated participants = %v; want %v", got, want)
+	}
+	var foreign struct {
+		ID int64 `json:"id"`
+	}
+	do(t, router, http.MethodPost, otherPath+"/messages", alice, `{"content":"elsewhere"}`, http.StatusCreated, &foreign)
+
 	// Send messages.
-	var first, second struct {
+	var first, second, third struct {
 		ID int64 `json:"id"`
 	}
 	do(t, router, http.MethodPost, chatPath+"/messages", alice, `{"content":"hello"}`, http.StatusCreated, &first)
 	do(t, router, http.MethodPost, chatPath+"/messages", alice, `{"content":"world"}`, http.StatusCreated, &second)
-	if first.ID == 0 || second.ID <= first.ID {
-		t.Fatalf("message ids = %d, %d; want increasing non-zero ids", first.ID, second.ID)
+	do(t, router, http.MethodPost, chatPath+"/messages", alice, `{"content":"again"}`, http.StatusCreated, &third)
+	if first.ID == 0 || second.ID <= first.ID || third.ID <= second.ID {
+		t.Fatalf("message ids = %d, %d, %d; want increasing non-zero ids", first.ID, second.ID, third.ID)
 	}
 
 	// Chat list.
@@ -194,52 +220,130 @@ func TestChatScenario(t *testing.T) {
 		t.Fatalf("chats = %d; want 1", len(chats.Chats))
 	}
 	c := chats.Chats[0]
-	if c.ID != created.ID || c.Name != "chat" || c.UnreadCount != 2 {
-		t.Fatalf("chat in list = %+v; want id %v, name chat, unread 2", c, created.ID)
+	if c.ID != created.ID || c.Name != "chat" || c.UnreadCount != 3 {
+		t.Fatalf("chat in list = %+v; want id %v, name chat, unread 3", c, created.ID)
 	}
-	if c.LastMessage == nil || c.LastMessage.ID != second.ID || c.LastMessage.SenderID.String() != alice || c.LastMessage.Content != "world" {
-		t.Fatalf("last message = %+v; want id %d from %s", c.LastMessage, second.ID, alice)
+	if c.LastMessage == nil || c.LastMessage.ID != third.ID || c.LastMessage.SenderID.String() != alice || c.LastMessage.Content != "again" {
+		t.Fatalf("last message = %+v; want id %d from %s", c.LastMessage, third.ID, alice)
 	}
 
 	// Chat details.
-	var details struct {
-		ID           uuid.UUID   `json:"id"`
-		Name         string      `json:"name"`
-		MessageCount int         `json:"message_count"`
-		Participants []uuid.UUID `json:"participants"`
-	}
 	do(t, router, http.MethodGet, chatPath, bob, "", http.StatusOK, &details)
-	if details.ID != created.ID || details.Name != "chat" || details.MessageCount != 2 || len(details.Participants) != 2 {
-		t.Fatalf("chat details = %+v; want id %v, name chat, 2 messages, 2 participants", details, created.ID)
+	if details.ID != created.ID || details.Name != "chat" || details.MessageCount != 3 {
+		t.Fatalf("chat details = %+v; want id %v, name chat, 3 messages", details, created.ID)
+	}
+	if got, want := sortedIDs(details.Participants), sortedIDs([]uuid.UUID{uuid.MustParse(alice), uuid.MustParse(bob)}); !slices.Equal(got, want) {
+		t.Fatalf("participants = %v; want %v", got, want)
 	}
 
-	// History. README does not define the order of a page without a cursor, so it is not checked here.
+	// History is always ordered from older to newer; without a cursor it is the last page.
+	historyIDs := func(params string) []int64 {
+		t.Helper()
+		do(t, router, http.MethodGet, chatPath+"/messages"+params, bob, "", http.StatusOK, &history)
+		ids := []int64{}
+		for _, m := range history.Messages {
+			ids = append(ids, m.ID)
+		}
+		return ids
+	}
+	pages := []struct {
+		params string
+		want   []int64
+	}{
+		{"", []int64{first.ID, second.ID, third.ID}},
+		{"?limit=2", []int64{second.ID, third.ID}},
+		{fmt.Sprintf("?after=%d", first.ID), []int64{second.ID, third.ID}},
+		{fmt.Sprintf("?after=%d&limit=1", first.ID), []int64{second.ID}},
+		{fmt.Sprintf("?before=%d", third.ID), []int64{first.ID, second.ID}},
+		{fmt.Sprintf("?before=%d&limit=1", third.ID), []int64{second.ID}},
+	}
+	for _, page := range pages {
+		if got := historyIDs(page.params); !slices.Equal(got, page.want) {
+			t.Fatalf("history %q = %v; want %v", page.params, got, page.want)
+		}
+	}
 	do(t, router, http.MethodGet, chatPath+"/messages", bob, "", http.StatusOK, &history)
-	if len(history.Messages) != 2 || history.Messages[0].ID+history.Messages[1].ID != first.ID+second.ID || history.Messages[0].ID == history.Messages[1].ID {
-		t.Fatalf("history = %+v; want messages %d and %d", history.Messages, first.ID, second.ID)
-	}
-	do(t, router, http.MethodGet, fmt.Sprintf("%s/messages?after=%d", chatPath, first.ID), bob, "", http.StatusOK, &history)
-	if len(history.Messages) != 1 || history.Messages[0].ID != second.ID {
-		t.Fatalf("history after %d = %+v; want message %d", first.ID, history.Messages, second.ID)
-	}
-	do(t, router, http.MethodGet, fmt.Sprintf("%s/messages?before=%d", chatPath, second.ID), bob, "", http.StatusOK, &history)
-	if len(history.Messages) != 1 || history.Messages[0].ID != first.ID {
-		t.Fatalf("history before %d = %+v; want message %d", second.ID, history.Messages, first.ID)
-	}
 	if history.Messages[0].SenderID.String() != alice || history.Messages[0].Content != "hello" {
 		t.Fatalf("first message = %+v; want hello from %s", history.Messages[0], alice)
 	}
 	do(t, router, http.MethodGet, chatPath+"/messages?after=1", bob, "", http.StatusBadRequest, nil)
 
 	// Mark as read.
+	lastRead := func() int64 {
+		t.Helper()
+		var id sql.NullInt64
+		if err := db.QueryRow(`SELECT last_read_message_id FROM chat_users WHERE chat_id = $1 AND user_id = $2`, created.ID, bob).Scan(&id); err != nil {
+			t.Fatalf("read mark of %s: %v", bob, err)
+		}
+		return id.Int64
+	}
+	unread := func() int {
+		t.Helper()
+		do(t, router, http.MethodGet, "/chats", bob, "", http.StatusOK, &chats)
+		if len(chats.Chats) != 1 {
+			t.Fatalf("chats = %d; want 1", len(chats.Chats))
+		}
+		return chats.Chats[0].UnreadCount
+	}
 	do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, first.ID), http.StatusNoContent, nil)
-	do(t, router, http.MethodGet, "/chats", bob, "", http.StatusOK, &chats)
-	if len(chats.Chats) != 1 || chats.Chats[0].UnreadCount != 1 {
-		t.Fatalf("chats after first read = %+v; want unread 1", chats.Chats)
+	if lastRead() != first.ID || unread() != 2 {
+		t.Fatalf("after first read: mark = %d, unread = %d; want %d and 2", lastRead(), unread(), first.ID)
 	}
+	do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, third.ID), http.StatusNoContent, nil)
+	if lastRead() != third.ID || unread() != 0 {
+		t.Fatalf("after last read: mark = %d, unread = %d; want %d and 0", lastRead(), unread(), third.ID)
+	}
+
+	// The same or an older message is not an error and does not move the mark.
+	do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, third.ID), http.StatusNoContent, nil)
 	do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, second.ID), http.StatusNoContent, nil)
-	do(t, router, http.MethodGet, "/chats", bob, "", http.StatusOK, &chats)
-	if len(chats.Chats) != 1 || chats.Chats[0].UnreadCount != 0 {
-		t.Fatalf("chats after second read = %+v; want unread 0", chats.Chats)
+	if lastRead() != third.ID || unread() != 0 {
+		t.Fatalf("after repeated and older read: mark = %d, unread = %d; want %d and 0", lastRead(), unread(), third.ID)
 	}
+
+	// A message that is not in this chat is rejected.
+	do(t, router, http.MethodPost, chatPath+"/read", bob, fmt.Sprintf(`{"last_read_message_id":%d}`, foreign.ID), http.StatusBadRequest, nil)
+	do(t, router, http.MethodPost, chatPath+"/read", bob, `{"last_read_message_id":1}`, http.StatusBadRequest, nil)
+	if lastRead() != third.ID {
+		t.Fatalf("mark after rejected read = %d; want %d", lastRead(), third.ID)
+	}
+
+	// An older value never overwrites a newer one. The domain rejects such a request before it reaches
+	// the repository, so the repository is called directly, the way a concurrent request would reach it.
+	messages := command.NewMessagesRepository(db)
+	reader := chat.ParticipantID(uuid.MustParse(bob))
+	stale := chat.SnowflakeID(first.ID)
+	staleChat := chat.RehydrateChat(chat.ChatID(created.ID), chat.Name("chat"), []chat.ParticipantID{reader}, nil, map[chat.ParticipantID]*chat.SnowflakeID{reader: &stale})
+	if err := messages.UpdateLastReaded(t.Context(), reader, staleChat); err != nil {
+		t.Fatalf("stale read mark: %v", err)
+	}
+	if lastRead() != third.ID {
+		t.Fatalf("mark after stale update = %d; want %d", lastRead(), third.ID)
+	}
+
+	late := message.NewMessage(message.SnowflakeID(first.ID-1), message.ChatID(created.ID), message.SenderID(uuid.MustParse(alice)), message.Content("late"))
+	if _, err := messages.Create(t.Context(), late); err != nil {
+		t.Fatalf("message with an older id: %v", err)
+	}
+	do(t, router, http.MethodGet, "/chats", bob, "", http.StatusOK, &chats)
+	if c := chats.Chats[0]; c.LastMessage == nil || c.LastMessage.ID != third.ID || c.LastMessage.SenderID.String() != alice || c.LastMessage.Content != "again" {
+		t.Fatalf("last message after an older one = %+v; want id %d", c.LastMessage, third.ID)
+	}
+	do(t, router, http.MethodGet, chatPath, bob, "", http.StatusOK, &details)
+	if details.MessageCount != 4 {
+		t.Fatalf("message count after an older message = %d; want 4", details.MessageCount)
+	}
+	if got, want := historyIDs(""), []int64{first.ID - 1, first.ID, second.ID, third.ID}; !slices.Equal(got, want) {
+		t.Fatalf("history after an older message = %v; want %v", got, want)
+	}
+}
+
+// sortedIDs returns the IDs as sorted strings, to compare sets of participants.
+func sortedIDs(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	slices.Sort(out)
+	return out
 }
