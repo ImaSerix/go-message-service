@@ -370,6 +370,35 @@ http://localhost:8080
 
 ---
 
+## Tests
+
+```bash
+go test -race ./...
+```
+
+Without `TEST_DATABASE_URL` the tests that need a database are skipped.
+
+### Tests with a real PostgreSQL
+
+`cmd/main_test.go` runs the main HTTP scenario (users, chat, messages, chat list, history, mark as read) against a real PostgreSQL.
+
+1. Create a separate test database. Its name must end with `_test`, otherwise the tests refuse to run. The tests empty all tables before the scenario, so never point them at a database with real data.
+2. Apply the migrations to it:
+
+   ```bash
+   migrate -path ./migrations/postgres -database "postgres://<user>:<password>@localhost:5432/message_test?sslmode=disable" up
+   ```
+
+3. Run the tests with the connection URL of that database:
+
+   ```bash
+   TEST_DATABASE_URL="postgres://<user>:<password>@localhost:5432/message_test?sslmode=disable" go test -race -count=1 ./...
+   ```
+
+The role needs data access and `TRUNCATE` on the tables.
+
+---
+
 ## Running in Docker
 
 Everything is built from the `Dockerfile` in the repository root. It has two targets.

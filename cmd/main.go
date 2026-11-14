@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"io/fs"
 	"log"
@@ -36,6 +37,10 @@ func main() {
 		log.Fatalf("error while connecting to db: %v", err)
 	}
 
+	log.Fatal(http.ListenAndServe(":8080", newRouter(config, db)))
+}
+
+func newRouter(config *config.Config, db *sql.DB) http.Handler {
 	usersRepository := command.NewUsersRepository(db)
 	chatsRepository := command.NewChatsRepository(db)
 	messagesRepository := command.NewMessagesRepository(db)
@@ -93,5 +98,5 @@ func main() {
 		})
 	})
 
-	log.Fatal(http.ListenAndServe(":8080", r))
+	return r
 }
