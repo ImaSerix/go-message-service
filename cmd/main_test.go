@@ -142,6 +142,9 @@ func TestChatScenario(t *testing.T) {
 	// A participant that does not exist in Message is rejected.
 	do(t, router, http.MethodPost, "/chats", alice, fmt.Sprintf(`{"name":"chat","participants":[%q,%q]}`, alice, stranger), http.StatusBadRequest, nil)
 
+	// The caller must be one of the participants.
+	do(t, router, http.MethodPost, "/chats", alice, fmt.Sprintf(`{"name":"chat","participants":[%q]}`, bob), http.StatusForbidden, nil)
+
 	// Create chat.
 	var created struct {
 		ID uuid.UUID `json:"id"`
