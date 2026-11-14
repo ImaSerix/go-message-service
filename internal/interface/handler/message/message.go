@@ -163,7 +163,7 @@ func (mh *MessageHandler) Read(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, appcmd.ErrChatNotExists):
 			http.Error(w, fmt.Sprintf("invalid chat %v", chatID), http.StatusBadRequest)
-		case errors.Is(err, appcmd.ErrMessageNotInChat):
+		case errors.Is(err, domainchat.ErrMessageNotInChat):
 			http.Error(w, fmt.Sprintf("no message %v in chat %v", req.LastReadMessageID, chatID), http.StatusBadRequest)
 		case errors.Is(err, domainchat.ErrReaderIsNotParticipant):
 			http.Error(w, "unauthorizated action", http.StatusForbidden)

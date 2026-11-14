@@ -170,6 +170,10 @@ func (cs *CommandService) HandleMarkAsRead(ctx context.Context, cmd *ReadMessage
 	)
 
 	if err != nil {
+		// The same or an older message than the one already read: nothing to change, not an error.
+		if errors.Is(err, chat.ErrNewerMessageIsAlreadyRead) {
+			return nil
+		}
 		return err
 	}
 

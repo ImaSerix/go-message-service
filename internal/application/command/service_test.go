@@ -708,6 +708,38 @@ func TestHandleMarkAsRead_RepoError(t *testing.T) {
 	})
 }
 
+func TestHandleMarkAsRead_AlreadyRead(t *testing.T) {
+	cmdServ, fChats, fMessages, _, _, _ := NewTestService()
+
+	for _, messageID := range []int64{1001, 1000} {
+		cmd := &command.ReadMessageCmd{
+			ChatID:    uuid.New(),
+			CallerID:  uuid.New(),
+			MessageID: messageID,
+		}
+		lastRead := chat.SnowflakeID(1001)
+		fChats.chat = chat.RehydrateChat(
+			chat.ChatID(cmd.ChatID),
+			chat.Name("nice name"),
+			[]chat.ParticipantID{
+				chat.ParticipantID(cmd.CallerID),
+				chat.ParticipantID(uuid.New()),
+			},
+			nil,
+			map[chat.ParticipantID]*chat.SnowflakeID{chat.ParticipantID(cmd.CallerID): &lastRead},
+		)
+		fMessages.existsInChat = true
+
+		err := cmdServ.HandleMarkAsRead(t.Context(), cmd)
+		if err != nil {
+			t.Fatalf("message %d: expected nil error, but got %v", messageID, err)
+		}
+		if id, _ := fChats.chat.LastReadMessageID(chat.ParticipantID(cmd.CallerID)); *id != lastRead {
+			t.Fatalf("message %d: expected read mark %d NOT to change, but got %d", messageID, lastRead, *id)
+		}
+	}
+}
+
 func TestHandleMarkAsRead_Success(t *testing.T) {
 	cmdServ, fChats, fMessages, fUsers, fNotifier, fGenerator := NewTestService()
 

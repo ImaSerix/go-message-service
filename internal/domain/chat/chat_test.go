@@ -88,6 +88,19 @@ func TestNewChat(t *testing.T) {
 	}
 }
 
+func TestNewChat_RepeatedParticipants(t *testing.T) {
+	a, b, c := chat.ParticipantID(uuid.New()), chat.ParticipantID(uuid.New()), chat.ParticipantID(uuid.New())
+	name, _ := chat.NewName("test")
+
+	created, err := chat.NewChat(chat.ChatID(uuid.New()), name, a, []chat.ParticipantID{b, a, b, c, a})
+	if err != nil {
+		t.Fatalf("expected nil error, but got %v", err)
+	}
+	if exp := []chat.ParticipantID{b, a, c}; !slices.Equal(created.Participants(), exp) {
+		t.Fatalf("expected participants %v, but got %v", exp, created.Participants())
+	}
+}
+
 func TestSendMessage(t *testing.T) {
 
 	senderID := uuid.New()

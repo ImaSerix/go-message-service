@@ -78,6 +78,8 @@ Message history uses cursor-based pagination with Snowflake IDs:
 
 `before` and `after` cannot be used together.
 
+A page is always ordered from older to newer messages. Without `before` and `after` the page holds the last `limit` messages of the chat, in the same order.
+
 ---
 
 ## HTTP API
@@ -183,6 +185,8 @@ Constraints:
 * `participants`: at least 1 UUID
 * caller must be included
 
+Repeated UUIDs in `participants` are not an error: they are removed silently and the chat is created with unique participants.
+
 Responses:
 
 * `201` chat created
@@ -236,6 +240,8 @@ Response:
 }
 ```
 
+`messages` are ordered from older to newer in all three cases: without a cursor (the last `limit` messages), with `before` and with `after`.
+
 ---
 
 #### POST /chats/{chatID}/messages
@@ -264,9 +270,14 @@ Request:
 }
 ```
 
-Response:
+Responses:
 
-* `204` success
+* `204` success; also when `last_read_message_id` is the same as or older than the message already marked as read — the mark is not changed
+* `400` invalid body, or no message with this ID in this chat
+* `401` unauthorized
+* `403` not a participant
+
+The mark only moves forward: an older value never replaces a newer one, also when requests run concurrently.
 
 ---
 
@@ -380,7 +391,7 @@ Without `TEST_DATABASE_URL` the tests that need a database are skipped.
 
 ### Tests with a real PostgreSQL
 
-`cmd/main_test.go` runs the main HTTP scenario (users, chat, messages, chat list, history, mark as read) against a real PostgreSQL.
+`cmd/main_test.go` runs the main HTTP scenario (users, chat, repeated participants, messages, chat list, history order, mark as read and its refusals) against a real PostgreSQL. It also calls the message repository directly to check that an older read mark and an older last message do not replace newer ones; this check is sequential, a real race is not reproduced.
 
 1. Create a separate test database. Its name must end with `_test`, otherwise the tests refuse to run. The tests empty all tables before the scenario, so never point them at a database with real data.
 2. Apply the migrations to it:

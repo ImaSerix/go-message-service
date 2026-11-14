@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"slices"
+
 	"github.com/ImaSerix/go-message-service/internal/domain/message"
 )
 
@@ -18,10 +20,18 @@ func NewChat(id ChatID, name Name, callerID ParticipantID, participants []Partic
 		return nil, ErrParticipantsEmpty
 	}
 
+	// Repeated participants are dropped, the order of the first occurrences is kept.
+	unique := make([]ParticipantID, 0, len(participants))
+	for _, p := range participants {
+		if !slices.Contains(unique, p) {
+			unique = append(unique, p)
+		}
+	}
+
 	chat := Chat{
 		id:                  id,
 		name:                name,
-		participants:        participants,
+		participants:        unique,
 		lastReadedMessageID: make(map[ParticipantID]*SnowflakeID),
 	}
 

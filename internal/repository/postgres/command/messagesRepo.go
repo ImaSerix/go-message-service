@@ -40,7 +40,12 @@ func (r *MessagesRepository) Create(ctx context.Context, m *message.Message) (*m
 	}
 	m.SetCreatedAt(createdAt)
 
-	if _, err := tx.ExecContext(ctx, `UPDATE chats SET last_message_id = $1, last_message_sender_id = $2, last_message_content = $3, last_message_created_at = $4, message_count = message_count + 1 WHERE id = $5`, int64(m.ID()), uuid.UUID(m.SenderID()), m.Content(), createdAt, uuid.UUID(m.ChatID())); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE chats SET message_count = message_count + 1 WHERE id = $1`, uuid.UUID(m.ChatID())); err != nil {
+		return nil, fmt.Errorf("message create: %w", err)
+	}
+
+	// A concurrent request may have already stored a newer message: the last message never goes back.
+	if _, err := tx.ExecContext(ctx, `UPDATE chats SET last_message_id = $1, last_message_sender_id = $2, last_message_content = $3, last_message_created_at = $4 WHERE id = $5 AND (last_message_id IS NULL OR last_message_id < $1)`, int64(m.ID()), uuid.UUID(m.SenderID()), m.Content(), createdAt, uuid.UUID(m.ChatID())); err != nil {
 		return nil, fmt.Errorf("message create: %w", err)
 	}
 
@@ -70,8 +75,12 @@ func (r *MessagesRepository) UpdateLastReaded(ctx context.Context, readerID chat
 	}
 
 	var updated int
-	err := r.db.QueryRowContext(ctx, `UPDATE chat_users SET last_read_message_id = $1 WHERE user_id = $2 and chat_id = $3 RETURNING 1`, int64(*lastReadedID), uuid.UUID(readerID), uuid.UUID(c.ID())).Scan(&updated)
+	err := r.db.QueryRowContext(ctx, `UPDATE chat_users SET last_read_message_id = $1 WHERE user_id = $2 and chat_id = $3 and (last_read_message_id IS NULL or last_read_message_id < $1) RETURNING 1`, int64(*lastReadedID), uuid.UUID(readerID), uuid.UUID(c.ID())).Scan(&updated)
 	if err != nil {
+		// A concurrent request has already stored the same or a newer mark: the mark never goes back.
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		return fmt.Errorf("messages updateLastReaded: %w", err)
 	}
 	if updated != 1 {

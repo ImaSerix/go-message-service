@@ -104,7 +104,8 @@ func (q *MessageQry) GetMessages(ctx context.Context, cursorID *int64, chatID uu
 		messages = messages[:limit]
 	}
 
-	if direction == domain.DirectionBackward {
+	// Pages read from newer to older (without a cursor and before a cursor) are returned from older to newer too.
+	if cursorID == nil || direction == domain.DirectionBackward {
 		slices.Reverse(messages)
 	}
 
