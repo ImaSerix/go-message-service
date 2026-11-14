@@ -11,7 +11,6 @@ import (
 	"github.com/ImaSerix/go-message-service/internal/domain"
 	"github.com/ImaSerix/go-message-service/internal/dto"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type MessageQry struct {
@@ -50,10 +49,10 @@ func (q *MessageQry) GetUnreadCount(ctx context.Context, userID uuid.UUID, chatI
 		}
 		unreadedCountByChat[chatID] = count
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("messages getUnreadCount: %w", err)
 	}
-	return unreadedCountByChat, rows.Err()
+	return unreadedCountByChat, nil
 }
 
 func (q *MessageQry) GetMessages(ctx context.Context, cursorID *int64, chatID uuid.UUID,
@@ -116,7 +115,7 @@ func (q *MessageQry) ExistsInChat(ctx context.Context, messageID int64, chatID u
 	var messageExists int
 	err := q.db.QueryRowContext(ctx, `SELECT 1 FROM messages WHERE id = $1 and chat_id = $2`, messageID, chatID).Scan(&messageExists)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, fmt.Errorf("messages qry existsInChat: %w", err)

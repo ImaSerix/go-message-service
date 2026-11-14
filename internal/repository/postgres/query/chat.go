@@ -32,7 +32,7 @@ func (q *ChatsQry) GetChat(ctx context.Context, chatID uuid.UUID) (*query.GetUse
 					name,
 					message_count,
 					created_at
-				FROM chat
+				FROM chats
 				WHERE id = $1;`
 	c := &query.GetUserOutput{}
 	err = tx.QueryRowContext(ctx, qry, chatID).Scan(&c.ID, &c.Name, &c.MessageCount, &c.CreatedAt)
@@ -48,6 +48,7 @@ func (q *ChatsQry) GetChat(ctx context.Context, chatID uuid.UUID) (*query.GetUse
 	if err != nil {
 		return nil, fmt.Errorf("chat get: %w", err)
 	}
+	defer rows.Close()
 
 	participants := []uuid.UUID{}
 	for rows.Next() {
@@ -59,7 +60,7 @@ func (q *ChatsQry) GetChat(ctx context.Context, chatID uuid.UUID) (*query.GetUse
 		}
 		participants = append(participants, id)
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("chat get: %w", err)
 	}
 
@@ -105,7 +106,7 @@ func (q *ChatsQry) GetUserChats(ctx context.Context, userID uuid.UUID) ([]*query
 		}
 		res = append(res, &c)
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("chats get: %w", err)
 	}
 	return res, nil

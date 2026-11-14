@@ -35,7 +35,7 @@ func (uh *UserHandler) SaveLocal(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, domainuser.ErrInvalidUsername):
 			http.Error(w, "invalid username", http.StatusBadRequest)
-		case errors.Is(err, appcmd.ErrAlreadyExists):
+		case errors.Is(err, appcmd.UserAlreadyExists):
 			http.Error(w, "userID taken", http.StatusConflict)
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)
