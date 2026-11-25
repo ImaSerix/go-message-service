@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"slices"
 	"sync"
 	"time"
 
@@ -10,8 +11,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Hub хранит соединения пользователей. Карта connections читается и меняется
+// только под mu. Соединение закрывается только после удаления из карты.
 type Hub struct {
 	connections map[uuid.UUID][]*Connection
+	closed      bool
 	mu          sync.RWMutex
 	readLimit   int64
 	pongWait    time.Duration
@@ -31,36 +35,61 @@ func New(readLimit int64, pongWait time.Duration, pingPeriod time.Duration, writ
 }
 
 func (h *Hub) AddConnection(uuid uuid.UUID, ws *websocket.Conn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	conn := &Connection{
 		id:   uuid,
 		ws:   ws,
-		Send: make(chan []byte),
+		Send: make(chan []byte, sendQueueSize),
 	}
 
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		ws.Close()
+		return
+	}
+	h.connections[uuid] = append(h.connections[uuid], conn)
+	h.mu.Unlock()
+
 	go conn.readLoop(h.readLimit, h.pongWait, func() {
-		conn.Close()
-		delete(h.connections, conn.id)
+		h.removeConnection(conn)
 	})
 
 	go conn.writeLoop(h.writeWait, h.pingPeriod)
+}
 
-	h.connections[uuid] = append(h.connections[uuid], conn)
+// removeConnection убирает из карты именно это соединение, а не все соединения
+// пользователя, и закрывает его. Соединение, которого уже нет в карте, не трогается.
+func (h *Hub) removeConnection(conn *Connection) {
+	h.mu.Lock()
+	conns := h.connections[conn.id]
+	i := slices.Index(conns, conn)
+	if i < 0 {
+		h.mu.Unlock()
+		return
+	}
+	conns = slices.Delete(conns, i, i+1)
+	if len(conns) == 0 {
+		delete(h.connections, conn.id)
+	} else {
+		h.connections[conn.id] = conns
+	}
+	h.mu.Unlock()
+
+	conn.Close()
 }
 
 func (h *Hub) Close() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	connections := h.connections
+	h.connections = make(map[uuid.UUID][]*Connection)
+	h.closed = true
+	h.mu.Unlock()
 
-	for _, conns := range h.connections {
+	for _, conns := range connections {
 		for _, conn := range conns {
 			conn.Close()
 		}
 	}
-
-	h.connections = make(map[uuid.UUID][]*Connection)
 }
 
 func (h *Hub) SendToUser(id uuid.UUID, event wsevent.WSEvent) {
@@ -77,14 +106,23 @@ func (h *Hub) SendToUser(id uuid.UUID, event wsevent.WSEvent) {
 	h.sendRaw(id, data)
 }
 
+// sendRaw не ждёт медленного клиента: если очередь соединения полна,
+// соединение закрывается.
 func (h *Hub) sendRaw(id uuid.UUID, data []byte) {
-	conns, ok := h.connections[id]
-	if !ok {
-		return
-	}
+	var overflowed []*Connection
 
-	for _, conn := range conns {
-		conn.Send <- data
+	h.mu.RLock()
+	for _, conn := range h.connections[id] {
+		select {
+		case conn.Send <- data:
+		default:
+			overflowed = append(overflowed, conn)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, conn := range overflowed {
+		h.removeConnection(conn)
 	}
 }
 

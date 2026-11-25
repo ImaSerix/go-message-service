@@ -74,7 +74,7 @@ func newRouter(config *config.Config, db *sql.DB) http.Handler {
 	r.Post("/internal/users", usersHandler.SaveLocal)
 	r.Route("/ws", func(r chi.Router) {
 		r.Use(autheMiddleware)
-		r.Post("/", wshandler.ServeHTTP)
+		r.Get("/", wshandler.ServeHTTP)
 	})
 
 	r.Route("/chats", func(r chi.Router) {

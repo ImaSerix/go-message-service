@@ -1,16 +1,22 @@
 package ws
 
 import (
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
+// sendQueueSize — размер очереди отправки одного соединения. При переполнении
+// соединение закрывается, клиент переподключается и перечитывает историю по HTTP.
+const sendQueueSize = 16
+
 type Connection struct {
-	id   uuid.UUID
-	ws   *websocket.Conn
-	Send chan []byte
+	id        uuid.UUID
+	ws        *websocket.Conn
+	Send      chan []byte
+	closeOnce sync.Once
 }
 
 func (conn *Connection) readLoop(readLimit int64, pongWait time.Duration, onClose func()) {
@@ -33,6 +39,8 @@ func (conn *Connection) readLoop(readLimit int64, pongWait time.Duration, onClos
 func (conn *Connection) writeLoop(writeWait time.Duration, pingPeriod time.Duration) {
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
+	// Ошибка записи закрывает сокет: readLoop получает ошибку и убирает соединение из Hub.
+	defer conn.ws.Close()
 
 	for {
 		select {
@@ -54,7 +62,11 @@ func (conn *Connection) writeLoop(writeWait time.Duration, pingPeriod time.Durat
 	}
 }
 
+// Close вызывает только Hub, после того как соединение убрано из карты:
+// тогда в Send больше никто не пишет. Повторный вызов ничего не делает.
 func (conn *Connection) Close() {
-	conn.ws.Close()
-	close(conn.Send)
+	conn.closeOnce.Do(func() {
+		conn.ws.Close()
+		close(conn.Send)
+	})
 }

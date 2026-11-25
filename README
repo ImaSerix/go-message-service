@@ -125,9 +125,9 @@ X-User-ID: <uuid>
 
 ---
 
-#### POST /ws
+#### GET /ws
 
-Upgrade to WebSocket connection.
+Upgrade to WebSocket connection. Only `GET` is accepted, as the WebSocket protocol requires.
 
 Responses:
 
@@ -291,6 +291,15 @@ The mark only moves forward: an older value never replaces a newer one, also whe
 ---
 
 ## WebSocket events
+
+### Hub
+
+The hub (`internal/interface/ws`) keeps the open connections of every user; one user may have several connections (tabs).
+
+* The map of connections is read and changed only under one mutex.
+* Each connection has a send queue of 16 messages. Sending never waits for a client: if the queue of a connection is full, that connection is closed. The client reconnects and reads the missed messages from the history over HTTP.
+* When a connection is closed (the client disconnects, a write fails, the queue overflows), only this connection is removed; the other connections of the user keep working.
+* A connection is closed once, also when several of these reasons happen at the same time. After the hub is closed, new connections are closed at once.
 
 ### Envelope
 
