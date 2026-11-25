@@ -42,6 +42,18 @@ func TestGetParamMiddleware(t *testing.T) {
 			expCode:   http.StatusBadRequest,
 		},
 		{
+			name:      "zero limit",
+			url:       "/?limit=0",
+			expCalled: false,
+			expCode:   http.StatusBadRequest,
+		},
+		{
+			name:      "negative limit",
+			url:       "/?limit=-2",
+			expCalled: false,
+			expCode:   http.StatusBadRequest,
+		},
+		{
 			name:      "valid before",
 			url:       "/?before=50",
 			beforeSet: true,

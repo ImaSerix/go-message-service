@@ -33,7 +33,7 @@ func GetParamMiddleware() func(http.Handler) http.Handler {
 			limitParam := r.URL.Query().Get("limit")
 			if limitParam != "" {
 				limit, err := strconv.ParseInt(limitParam, 10, strconv.IntSize)
-				if err != nil {
+				if err != nil || limit < 1 {
 					http.Error(w, "invalid limit param", http.StatusBadRequest)
 					return
 				}

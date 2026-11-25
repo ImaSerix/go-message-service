@@ -75,7 +75,7 @@ func (mh *MessageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, appqry.ErrMessageNotInChat):
 			http.Error(w, fmt.Sprintf("no message %v in chat %v", *cursor, chatID), http.StatusBadRequest)
 		case errors.Is(err, appqry.ErrInvalidLimit):
-			http.Error(w, "invalid limit", http.StatusBadRequest)
+			http.Error(w, "invalid limit param", http.StatusBadRequest)
 		default:
 			handler.LogError(r, err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

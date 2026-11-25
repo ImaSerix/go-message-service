@@ -74,9 +74,11 @@ Message history uses cursor-based pagination with Snowflake IDs:
 
 * `before=<id>` → older messages
 * `after=<id>` → newer messages
-* `limit=<n>` → page size
+* `limit=<n>` → page size, from 1 to `MAX_MESSAGE_PAGE_SIZE` (100); 50 when `limit` is not set
 
 `before` and `after` cannot be used together.
+
+A `limit` that is not a number, is less than 1 or is greater than `MAX_MESSAGE_PAGE_SIZE` → `400 invalid limit param`.
 
 A page is always ordered from older to newer messages. Without `before` and `after` the page holds the last `limit` messages of the chat, in the same order.
 
